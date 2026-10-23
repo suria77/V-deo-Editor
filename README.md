@@ -25,3 +25,6 @@ Es un sitio estático: no hay que compilar nada. Se publica en Cloudflare Pages 
 - **Interfaz gris tipo CapCut/DaVinci**: herramientas en la barra inferior; al tocar un clip, la barra cambia a sus herramientas (Dividir, Velocidad, Volumen, Keyframes, Posición, Opacidad, Filtros, Ajustar…). En iPad vertical el panel sale como hoja desde abajo.
 - **Keyframes** (◆): opacidad, escala, posición, rotación, volumen (vídeo y audio), tamaño de texto, intensidad de efectos. Rombos en la línea de tiempo, navegación entre keyframes y movimiento suave.
 - **Audio en iPad**: el sonido ya no se apaga con el interruptor de silencio; si el navegador no puede separar el audio de un vídeo, suena directamente desde el vídeo.
+- **Efectos recreados de CapCut**: «Callejuela» (haz de luz dorado con polvo de estrellas) y «Perro forma» (bokeh rosado) en Efectos → Luces y estrellas; y las entradas de texto «Callejuela» (máquina de escribir con letra en degradado brillante) y «Perro forma» (llega con estela, cortes glitch, destello y rayo de luz), también como estilos rápidos.
+- **Botones morado oscuro con relieve 3D**.
+- **Gestos tipo CapCut**: con algo seleccionado, arrastrar o pellizcar fuera de la imagen también lo mueve, lo agranda/achica y lo gira (con imán a 0° y 90°).

@@ -415,8 +415,14 @@ function pickColor(c, cb) {
   canvas.style.cursor = 'crosshair';
   toast('Toca sobre la imagen el color que quieres quitar', 4000);
 }
-canvas.addEventListener('pointerdown', (e) => {
+// Los gestos se escuchan en toda la zona de la imagen (como en CapCut): aunque el dedo esté fuera del vídeo,
+// arrastrar mueve el objeto seleccionado y pellizcar lo agranda/achica (y con dos dedos también se gira).
+const stageWrap = $('canvasWrap');
+const onCanvas = (e) => { const r = canvas.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; };
+stageWrap.addEventListener('pointerdown', (e) => {
+  if (e.target.closest && e.target.closest('button, input, a')) return;
   if (pickMode) {
+    if (!onCanvas(e)) return;
     const r = canvas.getBoundingClientRect();
     const { c, cb } = pickMode;
     pickMode = null;
@@ -432,19 +438,26 @@ canvas.addEventListener('pointerdown', (e) => {
     cb && cb(hex);
     return;
   }
-  canvas.setPointerCapture(e.pointerId);
+  try { stageWrap.setPointerCapture(e.pointerId); } catch (_) { /* nada */ }
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   let c = selectedClip();
   const t = state.time;
   const isVis = (k) => k && (k.type === 'video' || k.type === 'image' || k.type === 'text') && t >= k.start && t < k.start + k.dur;
   if (pointers.size === 1) {
-    // tocar algo de la imagen lo selecciona (si ya está en el grupo seleccionado, el grupo se mantiene)
-    const hit = hitTest(e);
-    if (!hit) { if (!state.selectMode) select(null); gesture = null; return; }
-    if (state.selectMode) { if (!state.sel.has(hit.id)) toggleSel(hit.id); else if (state.selection !== hit.id) { state.selection = hit.id; bus.emit('select'); } }
-    else if (state.sel.has(hit.id)) { if (state.selection !== hit.id) { state.selection = hit.id; bus.emit('select'); } }
-    else select(hit.id);
-    c = hit;
+    if (onCanvas(e)) {
+      // tocar algo de la imagen lo selecciona (si ya está en el grupo seleccionado, el grupo se mantiene)
+      const hit = hitTest(e);
+      if (!hit) {
+        // tocar un hueco de la imagen: si hay algo seleccionado y visible, el arrastre lo sigue moviendo
+        if (!isVis(c)) { if (!state.selectMode) select(null); gesture = null; return; }
+      } else {
+        if (state.selectMode) { if (!state.sel.has(hit.id)) toggleSel(hit.id); else if (state.selection !== hit.id) { state.selection = hit.id; bus.emit('select'); } }
+        else if (state.sel.has(hit.id)) { if (state.selection !== hit.id) { state.selection = hit.id; bus.emit('select'); } }
+        else select(hit.id);
+        c = hit;
+      }
+    }
+    // fuera de la imagen: se manipula lo que ya esté seleccionado, sin cambiar la selección
   }
   if (!c || !isVis(c)) { gesture = null; return; }
   const r = canvas.getBoundingClientRect();
@@ -452,23 +465,42 @@ canvas.addEventListener('pointerdown', (e) => {
   const items = (state.sel.has(c.id) ? selectedClips() : [c]).filter((k) => k.type === 'video' || k.type === 'image' || k.type === 'text');
   const lt = (k) => Math.max(0, Math.min(k.dur, state.time - k.start));
   const snapItems = () => items.map((k) => {
-    const P = k.type === 'text' ? ['x', 'y', 'size'] : ['tf.x', 'tf.y', 'tf.scale'];
-    return { k, P, x0: valueAt(k, P[0], lt(k)), y0: valueAt(k, P[1], lt(k)), s0: valueAt(k, P[2], lt(k)), lt: lt(k) };
+    const P = k.type === 'text' ? ['x', 'y', 'size', 'rot'] : ['tf.x', 'tf.y', 'tf.scale', 'tf.rot'];
+    return { k, P, x0: valueAt(k, P[0], lt(k)), y0: valueAt(k, P[1], lt(k)), s0: valueAt(k, P[2], lt(k)), r0: valueAt(k, P[3], lt(k)) || 0, lt: lt(k) };
   });
-  gesture = { r, items: snapItems(), snapItems, p0: { x: e.clientX, y: e.clientY }, d0: null, moved: false };
+  gesture = { r, items: snapItems(), snapItems, p0: { x: e.clientX, y: e.clientY }, d0: null, a0: 0, moved: false };
 });
-canvas.addEventListener('pointermove', (e) => {
+stageWrap.addEventListener('pointermove', (e) => {
   if (!pointers.has(e.pointerId) || !gesture) return;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   const g = gesture;
   const pts = [...pointers.values()];
   if (pts.length >= 2) {
     const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-    if (!g.d0) { g.d0 = d; g.items = g.snapItems(); return; }
+    const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+    const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    if (!g.d0) { g.d0 = Math.max(10, d); g.a0 = ang; g.m0 = mid; g.items = g.snapItems(); return; }
     const k = d / g.d0;
+    let da = ((ang - g.a0) * 180) / Math.PI;
+    if (da > 180) da -= 360; else if (da < -180) da += 360;
+    if (Math.abs(da) < 6) da = 0; // pequeño margen para que al pellizcar no se tuerza sin querer
+    else da -= Math.sign(da) * 6;
+    const mdx = (mid.x - g.m0.x) / g.r.width, mdy = (mid.y - g.m0.y) / g.r.height;
     for (const it of g.items) {
       if (it.k.type === 'text') setValue(it.k, 'size', it.lt, Math.max(0.015, Math.min(0.4, it.s0 * k)));
       else setValue(it.k, 'tf.scale', it.lt, Math.max(0.05, Math.min(6, it.s0 * k)));
+      if (da !== 0 || g.rotated) {
+        g.rotated = true;
+        let rot = it.r0 + da;
+        const near = Math.round(rot / 90) * 90;
+        if (Math.abs(rot - near) < 3) rot = near; // imán a 0°, 90°, 180°…
+        setValue(it.k, it.P[3], it.lt, Math.max(-180, Math.min(180, rot)));
+      }
+      if (Math.abs(mdx) + Math.abs(mdy) > 0.003 || g.panned) {
+        g.panned = true;
+        const m = it.k.type === 'text' ? 2 : 1;
+        setValue(it.k, it.P[0], it.lt, it.x0 + mdx * m); setValue(it.k, it.P[1], it.lt, it.y0 + mdy * m);
+      }
     }
   } else {
     const dx = (e.clientX - g.p0.x) / g.r.width, dy = (e.clientY - g.p0.y) / g.r.height;
@@ -482,6 +514,7 @@ canvas.addEventListener('pointermove', (e) => {
   dirty = true;
 });
 const endPtr = (e) => {
+  if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
   if (pointers.size === 0 && gesture) {
     gesture = null;
@@ -489,8 +522,10 @@ const endPtr = (e) => {
     bus.emit('change', { timing: true });
   } else if (gesture) { gesture.d0 = null; const p = [...pointers.values()][0]; if (p) { gesture.p0 = p; gesture.items = gesture.snapItems(); } }
 };
-canvas.addEventListener('pointerup', endPtr);
-canvas.addEventListener('pointercancel', endPtr);
+stageWrap.addEventListener('pointerup', endPtr);
+stageWrap.addEventListener('pointercancel', endPtr);
+// en Safari (iPad) evita que el pellizco haga zoom a toda la página
+['gesturestart', 'gesturechange'].forEach((ev) => stageWrap.addEventListener(ev, (e) => e.preventDefault()));
 
 // ---------- exportación ----------
 function exportDims(q) {
