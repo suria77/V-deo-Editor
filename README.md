@@ -1,0 +1,19 @@
+# Atelier de Vídeo
+
+Editor de vídeo web (uso personal de Dharmaeterno) pensado para Shorts/Reels, que funciona en el navegador del iPad (Safari) y del ordenador. No necesita servidor: todo se procesa en el propio dispositivo.
+
+## Funciones
+- Línea de tiempo táctil con pistas: Superpuesto, Vídeo, Texto, Efectos y Audio. Arrastrar, recortar por los bordes, dividir, duplicar, deshacer/rehacer e imán.
+- Formatos 9:16, 4:5, 1:1 y 16:9. Encaje «llenar» o «ajustar» con fondo desenfocado.
+- Color: 15 filtros y 13 ajustes (exposición, contraste, temperatura, luces, sombras, viñeta, grano, nitidez…).
+- Movimiento (zoom lento, paneo, temblor, latido…), 13 transiciones de entrada/salida, velocidad 0,25×–4×.
+- Pantalla verde con cuentagotas, máscaras (círculo, redondeada, degradados), recorte y modos de fusión (pantalla para fuego o chispas sobre negro).
+- Texto con 12 fuentes, degradado, borde, sombra o brillo, fondo y animaciones de entrada, salida y bucle (máquina de escribir, letra a letra, pop, arcoíris…).
+- 14 efectos de ambiente: fuego, brasas, niebla, humo, nieve, lluvia, destellos, polvo dorado, bokeh, rayos de luz, confeti, corazones, pétalos y hojas.
+- 14 efectos de imagen: glitch, RGB, VHS, grano, temblor, flashes, latido, desenfoque, pixelado, espejo, B/N, sepia, viñeta y resplandor.
+- Audio: música, voz en off grabada desde la app, volumen, fundidos y mezcla con limitador.
+- Exportación MP4 fotograma a fotograma con WebCodecs, con alternativa en tiempo real si el navegador no lo admite.
+- Guardado automático del proyecto en el propio dispositivo (IndexedDB).
+
+## Publicación
+Es un sitio estático: no hay que compilar nada. Se publica en Cloudflare Pages con la raíz del repositorio como carpeta de salida.
