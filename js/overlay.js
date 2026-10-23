@@ -4,6 +4,7 @@ import { bus } from './state.js';
 import { animClip } from './kf.js';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+export const textBounds = new Map();
 const ease = (x) => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
 const backOut = (x) => { x = clamp(x, 0, 1); const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
 const fract = (x) => x - Math.floor(x);
@@ -589,6 +590,7 @@ export function drawText(ctx, c, lt, W, H) {
     default: break;
   }
   const cx = W * (0.5 + c.x * 0.5) + dx, cy = H * (0.5 + c.y * 0.5) + dy;
+  if (ctx.canvas.width === W) textBounds.set(c.id, { cx, cy, w: (maxLW + px * 0.7) * scale, h: (lines.length * lh + px * 0.3) * scale, rot: (c.rot * Math.PI) / 180, a: alpha });
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate((c.rot * Math.PI) / 180);
@@ -681,6 +683,7 @@ export class Overlay {
         if (def.add) usedA = true; else usedN = true;
       }
     }
+    textBounds.clear();
     const texts = act.filter((c) => c.type === 'text').sort((a, b) => a.start - b.start);
     if (texts.length) {
       this.tx.ctx.setTransform(1, 0, 0, 1, 0, 0); this.tx.ctx.clearRect(0, 0, W, H);

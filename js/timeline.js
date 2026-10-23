@@ -342,7 +342,7 @@ export class Timeline {
           commit();
         } else if (wasSel && !state.selectMode) {
           // toque simple sobre un clip ya seleccionado → queda solo ese
-          if (state.sel.size > 1) select(c.id);
+          if (state.sel.size > 1 && state.selection !== c.id) { state.selection = c.id; bus.emit('select'); }
         } else if (wasSel && state.selectMode) {
           toggleSel(c.id);
         }

@@ -1,11 +1,11 @@
 // Arranque de la app: reproductor, importación, exportación, gestos sobre la imagen.
 import {
-  state, bus, commit, undo, redo, canUndo, canRedo, uid, select, selectedClip, selectedClips, selectIds, setSelectMode, getClip,
+  state, bus, commit, undo, redo, canUndo, canRedo, uid, select, toggleSel, selectedClip, selectedClips, selectIds, setSelectMode, getClip,
   projectDuration, makeVisualClip, makeAudioClip, makeTextClip, makeFxClip, addClip,
   removeClip, removeClips, duplicateClips, splitClips, setAspect, loadProject, resetHistory,
 } from './state.js';
 import { Renderer } from './renderer.js';
-import { Overlay } from './overlay.js';
+import { Overlay, textBounds } from './overlay.js';
 import { AudioEngine } from './audio.js';
 import { Timeline } from './timeline.js';
 import { Panels } from './panels.js';
@@ -139,6 +139,7 @@ function loop(now) {
     syncVideos(state.time);
     renderer.render({ project: state.project, t: state.time, media: state.media, videoFor, overlay });
     if (exporting) exporting.progress(state.time / Math.max(0.01, projectDuration()));
+    else updateSelBoxes();
   }
   requestAnimationFrame(loop);
 }
@@ -356,6 +357,47 @@ async function recordVoice() {
   };
 }
 
+// ---------- recuadros de selección sobre la imagen ----------
+const selLayer = $('selLayer');
+const boxEls = new Map();
+function boundsOf(id) { return textBounds.get(id) || renderer.bounds.get(id) || null; }
+function updateSelBoxes() {
+  const seen = new Set();
+  if (!state.playing && state.sel.size) {
+    const cr = canvas.getBoundingClientRect(), wr = $('canvasWrap').getBoundingClientRect();
+    const sx = cr.width / renderer.W, sy = cr.height / renderer.H;
+    for (const id of state.sel) {
+      const b = boundsOf(id);
+      if (!b) continue;
+      seen.add(id);
+      let el = boxEls.get(id);
+      if (!el) { el = h('div', { class: 'sel-box' }, h('i', { class: 'hd tl' }), h('i', { class: 'hd tr' }), h('i', { class: 'hd bl' }), h('i', { class: 'hd br' })); selLayer.append(el); boxEls.set(id, el); }
+      const w = Math.max(16, b.w * sx), hh = Math.max(16, b.h * sy);
+      el.style.cssText = `left:${cr.left - wr.left + b.cx * sx - w / 2}px;top:${cr.top - wr.top + b.cy * sy - hh / 2}px;width:${w}px;height:${hh}px;transform:rotate(${b.rot}rad)`;
+      el.classList.toggle('prim', id === state.selection);
+    }
+  }
+  for (const [id, el] of boxEls) if (!seen.has(id)) { el.remove(); boxEls.delete(id); }
+}
+bus.on('select', () => { dirty = true; });
+
+// Qué hay bajo el dedo: primero textos (el de más arriba), luego superpuestos y por último el vídeo principal
+function hitTest(e) {
+  const cr = canvas.getBoundingClientRect();
+  const px = ((e.clientX - cr.left) / cr.width) * renderer.W, py = ((e.clientY - cr.top) / cr.height) * renderer.H;
+  const pad = 14 * (renderer.W / cr.width);
+  const inside = (b) => {
+    const dx = px - b.cx, dy = py - b.cy, co = Math.cos(-b.rot), si = Math.sin(-b.rot);
+    const x = dx * co - dy * si, y = dx * si + dy * co;
+    return Math.abs(x) <= b.w / 2 + pad && Math.abs(y) <= b.h / 2 + pad;
+  };
+  const texts = [...textBounds.entries()].reverse();
+  for (const [id, b] of texts) if (b.a > 0.05 && inside(b)) return getClip(id);
+  const vis = [...renderer.bounds.entries()].reverse();
+  for (const [id, b] of vis) if (b.a > 0.05 && inside(b)) return getClip(id);
+  return null;
+}
+
 // ---------- gestos sobre la imagen ----------
 const pointers = new Map();
 let gesture = null;
@@ -387,13 +429,14 @@ canvas.addEventListener('pointerdown', (e) => {
   let c = selectedClip();
   const t = state.time;
   const isVis = (k) => k && (k.type === 'video' || k.type === 'image' || k.type === 'text') && t >= k.start && t < k.start + k.dur;
-  if (pointers.size === 1 && !isVis(c)) {
-    // selecciona lo de más arriba
-    const act = state.project.clips.filter(isVis);
-    const order = { text: 3, overlay: 2, video: 1 };
-    act.sort((a, b) => (order[b.lane] || 0) - (order[a.lane] || 0));
-    c = act[0];
-    if (c) select(c.id);
+  if (pointers.size === 1) {
+    // tocar algo de la imagen lo selecciona (si ya está en el grupo seleccionado, el grupo se mantiene)
+    const hit = hitTest(e);
+    if (!hit) { if (!state.selectMode) select(null); gesture = null; return; }
+    if (state.selectMode) { if (!state.sel.has(hit.id)) toggleSel(hit.id); else if (state.selection !== hit.id) { state.selection = hit.id; bus.emit('select'); } }
+    else if (state.sel.has(hit.id)) { if (state.selection !== hit.id) { state.selection = hit.id; bus.emit('select'); } }
+    else select(hit.id);
+    c = hit;
   }
   if (!c || !isVis(c)) { gesture = null; return; }
   const r = canvas.getBoundingClientRect();

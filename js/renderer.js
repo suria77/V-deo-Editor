@@ -293,6 +293,7 @@ export function effectiveAdj(c) {
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
+    this.bounds = new Map();
     const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
     if (!gl) throw new Error('WebGL2 no disponible');
     this.gl = gl;
@@ -420,6 +421,13 @@ export class Renderer {
     const W = this.W, H = this.H;
     const sw = m.w || 1280, sh = m.h || 720;
     const T = computeTransform(c, lt, W, H, sw, sh);
+    {
+      // zona que ocupa en pantalla (para tocar y para el recuadro de selección)
+      const cr = c.crop, cw = 1 - cr.l - cr.r, chh = 1 - cr.t - cr.b;
+      const ox = ((cr.l - cr.r) / 2) * T.w, oy = ((cr.t - cr.b) / 2) * T.h;
+      const co = Math.cos(T.rot), si = Math.sin(T.rot);
+      this.bounds.set(c.id, { cx: T.cx + ox * co - oy * si, cy: T.cy + ox * si + oy * co, w: T.w * cw, h: T.h * chh, rot: T.rot, a: T.alpha });
+    }
     if (T.alpha <= 0.002) return;
     const needMip = T.lod > 0.05 || (c.tf.fit === 'contain' && c.tf.bgBlur);
     const e = this.getTexture(c, m, videoEl, needMip);
@@ -504,6 +512,7 @@ export class Renderer {
     const bg = hexToRgb(project.bg || '#000000');
     gl.clearColor(bg[0], bg[1], bg[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
+    this.bounds = new Map();
     const vis = project.clips.filter((c) => (c.type === 'video' || c.type === 'image') && t >= c.start - 1e-6 && t < c.start + c.dur);
     const order = { video: 0, overlay: 1 };
     vis.sort((a, b) => order[a.lane] - order[b.lane] || a.start - b.start);

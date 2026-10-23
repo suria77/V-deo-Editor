@@ -319,3 +319,12 @@ body.resizing, body.resizing * { cursor: inherit !important; }
 }
 
 .ver { font-size: 11px; color: var(--ink3); margin-left: -4px; align-self: flex-end; margin-bottom: 4px; }
+
+/* recuadro de selección sobre la imagen */
+.sel-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.sel-box { position: absolute; border: 2px dashed rgba(255, 255, 255, .85); border-radius: 3px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .45); pointer-events: none; }
+.sel-box.prim { border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .5), 0 0 12px rgba(86, 200, 224, .55); }
+.sel-box .hd { position: absolute; width: 12px; height: 12px; background: #fff; border: 2px solid var(--accent); border-radius: 50%; }
+.sel-box:not(.prim) .hd { display: none; }
+.sel-box .tl { left: -7px; top: -7px; } .sel-box .tr { right: -7px; top: -7px; }
+.sel-box .bl { left: -7px; bottom: -7px; } .sel-box .br { right: -7px; bottom: -7px; }
