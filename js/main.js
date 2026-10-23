@@ -10,7 +10,7 @@ import { AudioEngine } from './audio.js';
 import { Timeline } from './timeline.js';
 import { Panels } from './panels.js';
 import { startRecorder, pickMime, offlineConfig, exportOffline } from './exporter.js';
-import { saveProject, loadSaved, clearSaved } from './storage.js';
+import { saveProject, loadSaved, listProjects, openSavedProject, deleteProject, askPersistent, storageInfo } from './storage.js';
 import { ASPECTS } from './presets.js';
 import { h, fmtTime, toast, openModal, closeModal } from './ui.js';
 import { openSubtitles, openSubEditor, subClips } from './subs.js';
@@ -702,23 +702,67 @@ function openProject() {
     h('div', { style: 'height:16px' }),
     h('button', { class: 'btn gold block', onclick: () => { state.project.name = name.value.trim() || 'Mi vídeo'; commit(); updateProjChip(); closeModal(); } }, 'Guardar'),
     h('div', { style: 'height:10px' }),
-    h('button', { class: 'btn danger block', onclick: newProject }, '✦ Empezar un proyecto nuevo'),
+    h('button', { class: 'btn block', onclick: newProject }, '✦ Proyecto nuevo (este se queda guardado)'),
+    h('button', { class: 'btn block ghost', onclick: openProjectsList }, '📁 Mis proyectos guardados'),
   ]);
 }
 
-async function newProject() {
-  if (!confirm('¿Empezar un proyecto nuevo? Se borrará el actual de este dispositivo.')) return;
+// Cambia a otro proyecto: guarda el actual, suelta sus medios y carga los del otro
+async function switchTo(data) {
   pause();
+  await flushSave();
   for (const m of state.media.values()) URL.revokeObjectURL(m.url);
   state.media.clear();
-  await clearSaved();
-  loadProject({ name: 'Mi vídeo', aspect: '9:16', w: 1080, h: 1920, fps: 30, bg: '#000000', clips: [] });
   cleanupVideos();
+  if (data) {
+    for (const r of data.media) {
+      try { await createMedia(r.blob, r.id, { name: r.name, thumb: r.thumb, saved: true }); } catch (e) { /* medio perdido */ }
+    }
+    data.project.clips = data.project.clips.filter((c) => !c.media || state.media.has(c.media));
+    loadProject(data.project);
+  } else {
+    loadProject({ id: uid('p'), name: 'Mi vídeo', aspect: '9:16', w: 1080, h: 1920, fps: 30, bg: '#000000', clips: [] });
+    await saveProject(state.project, state.media);
+  }
   bus.emit('media');
   closeModal();
   applyPreviewSize();
   updateProjChip();
   updateEmpty();
+  timeline.render();
+  $('tcTotal').textContent = fmtTime(projectDuration());
+  dirty = true;
+}
+
+async function newProject() {
+  await switchTo(null);
+  toast('Proyecto nuevo. El anterior sigue guardado en «Mis proyectos».', 3500);
+}
+
+const fmtDate = (t) => new Date(t).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+async function openProjectsList() {
+  const list = await listProjects();
+  const info = await storageInfo();
+  const box = h('div', { style: 'display:flex;flex-direction:column;gap:10px;margin:10px 0 14px' });
+  if (!list.length) box.append(h('p', { class: 'hint' }, 'Todavía no hay proyectos guardados.'));
+  for (const p of list) {
+    const cur = p.id === state.project.id;
+    const row = h('div', { class: 'proj-row' + (cur ? ' cur' : '') },
+      h('div', { class: 'pj-th', style: p.thumb ? `background-image:url(${p.thumb})` : '' }, p.thumb ? '' : '🎬'),
+      h('div', { class: 'pj-tx' }, h('b', {}, p.name || 'Sin nombre'),
+        h('small', {}, `${p.aspect} · ${fmtTime(p.dur || 0)} · ${p.count || 0} clips`), h('small', {}, (cur ? 'Abierto ahora · ' : '') + fmtDate(p.updated))),
+      h('button', { class: 'btn', onclick: async () => { if (cur) { closeModal(); return; } toast('Abriendo…', 20000); const d = await openSavedProject(p.id); if (!d) { toast('No se pudo abrir este proyecto'); return; } await switchTo(d); toast('Proyecto abierto ✓'); } }, cur ? 'Seguir' : 'Abrir'),
+      cur ? null : h('button', { class: 'icon-btn sm', title: 'Borrar', onclick: async () => { if (!confirm(`¿Borrar «${p.name}» de este dispositivo?`)) return; await deleteProject(p.id, state.media); openProjectsList(); } }, '🗑'));
+    box.append(row);
+  }
+  openModal([
+    h('h2', {}, 'Mis proyectos'),
+    h('p', { class: 'sub' }, 'Se guardan solos en este dispositivo mientras editas, aunque no exportes.'),
+    box,
+    info && info.quota ? h('p', { class: 'hint' }, `Espacio usado: ${(info.used / 1048576).toFixed(0)} MB de ${(info.quota / 1048576).toFixed(0)} MB`) : null,
+    h('button', { class: 'btn gold block', onclick: newProject }, '✦ Proyecto nuevo'),
+    h('button', { class: 'btn block ghost', onclick: closeModal }, 'Cerrar'),
+  ].filter(Boolean));
 }
 
 function updateProjChip() {
@@ -757,13 +801,29 @@ bus.on('change', (e) => {
 });
 bus.on('time', () => { $('tcNow').textContent = fmtTime(state.time); });
 bus.on('fontloaded', () => (dirty = true));
-let saveTimer = null;
+let saveTimer = null, saving = Promise.resolve(), warnedBig = false;
+function doSave() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  saving = saving.then(async () => {
+    const r = await saveProject(state.project, state.media);
+    if (r.failed.length && !warnedBig) {
+      warnedBig = true;
+      toast('«' + r.failed[0] + '» pesa demasiado para guardarlo en este dispositivo: el proyecto se guarda, pero ese archivo tendrás que volver a importarlo al reabrir.', 9000);
+    }
+  }).catch(() => {});
+  return saving;
+}
+const flushSave = () => doSave();
 bus.on('commit', () => {
   updateUndo();
   $('tcTotal').textContent = fmtTime(projectDuration());
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveProject(state.project, state.media), 900);
+  saveTimer = setTimeout(doSave, 700);
 });
+// al salir o cambiar de app se guarda al instante, sin esperar
+document.addEventListener('visibilitychange', () => { if (document.hidden) doSave(); });
+window.addEventListener('pagehide', () => doSave());
 
 $('btnPlay').onclick = () => (state.playing ? pause() : play());
 $('btnToStart').onclick = () => seek(0);
@@ -905,6 +965,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && sta
   applyPreviewSize();
   resetHistory();
   updateUndo();
+  askPersistent();
   const saved = await loadSaved();
   if (saved && saved.project && saved.project.clips && saved.project.clips.length) {
     toast('Recuperando tu proyecto…', 30000);
@@ -912,10 +973,13 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && sta
       try { await createMedia(r.blob, r.id, { name: r.name, thumb: r.thumb, saved: true }); } catch (e) { /* medio perdido */ }
     }
     const p = saved.project;
+    const before = p.clips.length;
     p.clips = p.clips.filter((c) => !c.media || state.media.has(c.media));
     loadProject(p);
     bus.emit('media');
-    toast('Proyecto recuperado ✓');
+    toast(p.clips.length < before ? 'Proyecto recuperado, pero faltan ' + (before - p.clips.length) + ' clips cuyo archivo no se pudo guardar (importa de nuevo el vídeo).' : 'Proyecto recuperado ✓', p.clips.length < before ? 9000 : 2500);
+  } else if (saved && saved.project) {
+    loadProject(saved.project);
   }
   updateProjChip();
   updateEmpty();

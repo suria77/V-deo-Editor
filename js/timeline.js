@@ -288,9 +288,49 @@ export class Timeline {
   }
 
   bindClip(el, c) {
+    // Con el dedo: deslizar sobre un clip hace scroll de la línea de tiempo (como en CapCut). Un toque lo selecciona
+    // y para moverlo hay que mantenerlo pulsado un instante. Las asas de recorte de un clip seleccionado y el ratón
+    // funcionan al momento.
+    const tap = () => {
+      const wasSel = state.sel.has(c.id);
+      if (!wasSel) { if (state.selectMode) toggleSel(c.id); else select(c.id); }
+      else if (state.selectMode) toggleSel(c.id);
+      else if (state.selection !== c.id) { state.selection = c.id; bus.emit('select'); }
+      this.app.showInspector && this.app.showInspector();
+    };
+    let held = false;
+    el.addEventListener('touchmove', (ev) => { if (held) ev.preventDefault(); }, { passive: false });
     el.addEventListener('pointerdown', (e) => {
+      const onHandle = e.target.classList.contains('l') || e.target.classList.contains('r');
+      if (e.pointerType === 'mouse' || onHandle) { e.stopPropagation(); e.preventDefault(); begin(e); return; }
       e.stopPropagation();
-      e.preventDefault();
+      const sx = e.clientX, sy = e.clientY, pid = e.pointerId;
+      let last = { clientX: sx, clientY: sy }, cancelled = false;
+      const clean = () => {
+        clearTimeout(timer);
+        el.removeEventListener('pointermove', pm);
+        el.removeEventListener('pointerup', pu);
+        el.removeEventListener('pointercancel', pc);
+      };
+      const timer = setTimeout(() => {
+        if (cancelled) return;
+        held = true;
+        clean();
+        el.classList.add('lifted');
+        try { navigator.vibrate && navigator.vibrate(12); } catch (er) { /* nada */ }
+        begin({ clientX: last.clientX, pointerId: pid, target: el, pointerType: 'touch' }, true);
+      }, 260);
+      const pm = (ev) => {
+        last = ev;
+        if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 9) { cancelled = true; clean(); } // es un scroll
+      };
+      const pu = () => { const ok = !cancelled; clean(); if (ok) tap(); };
+      const pc = () => { cancelled = true; clean(); };
+      el.addEventListener('pointermove', pm);
+      el.addEventListener('pointerup', pu);
+      el.addEventListener('pointercancel', pc);
+    });
+    const begin = (e, fromHold = false) => {
       const mode = e.target.classList.contains('l') ? 'l' : e.target.classList.contains('r') ? 'r' : 'move';
       const wasSel = state.sel.has(c.id);
       // al empezar: si no estaba seleccionado, se selecciona (en modo selección se añade al grupo)
@@ -350,6 +390,8 @@ export class Timeline {
         el.removeEventListener('pointermove', mv);
         el.removeEventListener('pointerup', up);
         el.removeEventListener('pointercancel', up);
+        held = false;
+        el.classList.remove('lifted');
         if (moved) {
           this.render();
           bus.emit('change', { structural: false, timing: true });
@@ -364,6 +406,6 @@ export class Timeline {
       el.addEventListener('pointermove', mv);
       el.addEventListener('pointerup', up);
       el.addEventListener('pointercancel', up);
-    });
+    };
   }
 }

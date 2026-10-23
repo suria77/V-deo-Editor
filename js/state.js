@@ -17,7 +17,7 @@ class Emitter {
 export const bus = new Emitter();
 
 export const state = {
-  project: { name: 'Mi vídeo', aspect: '9:16', w: 1080, h: 1920, fps: 30, bg: '#000000', clips: [] },
+  project: { id: uid('p'), name: 'Mi vídeo', aspect: '9:16', w: 1080, h: 1920, fps: 30, bg: '#000000', clips: [] },
   media: new Map(), // id -> {id,name,kind,blob,url,w,h,duration,el,buffer,thumb,peaks}
   selection: null, // clip principal (el último tocado)
   sel: new Set(), // todos los clips seleccionados
@@ -277,6 +277,7 @@ export function setAspect(key, dims) {
 }
 
 export function loadProject(p) {
+  if (!p.id) p.id = uid('p');
   state.project = p;
   state.selection = null;
   state.sel = new Set();
