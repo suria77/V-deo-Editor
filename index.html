@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#fbf6ec">
+<meta name="theme-color" content="#3b3e44">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Atelier de Vídeo">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -14,21 +14,18 @@
 <title>Atelier de Vídeo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Caveat:wght@400;700&family=Cinzel:wght@400;700;900&family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400&family=Dancing+Script:wght@400;700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Montserrat:ital,wght@0,400;0,700;0,900;1,700&family=Pacifico&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,700&family=Poppins:wght@400;700;900&family=Sora:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Caveat:wght@400;700&family=Cinzel:wght@400;700;900&family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400&family=Dancing+Script:wght@400;700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Montserrat:ital,wght@0,400;0,700;0,900;1,700&family=Pacifico&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,700&family=Poppins:wght@400;700;900&family=Sora:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div id="app">
+<div id="app" class="panel-open">
   <header class="top">
-    <div class="brand">
-      <span class="logo">✦</span>
-      <div class="brand-txt"><b>Atelier</b><small>de Vídeo</small></div>
-    </div>
+    <div class="brand"><span class="logo">✦</span><b class="brand-txt">Atelier</b></div>
     <button class="chip proj-btn" id="btnProject" title="Proyecto y formato"><span id="projName">Mi vídeo</span><em id="projAspect">9:16</em></button>
     <div class="spacer"></div>
     <button class="icon-btn" id="btnUndo" title="Deshacer" aria-label="Deshacer">↶</button>
     <button class="icon-btn" id="btnRedo" title="Rehacer" aria-label="Rehacer">↷</button>
-    <button class="btn gold" id="btnExport">⬇ Exportar</button>
+    <button class="btn accent" id="btnExport">Exportar</button>
   </header>
 
   <main class="work">
@@ -38,25 +35,23 @@
         <div class="empty-hint" id="emptyHint">
           <div class="big">✦</div>
           <p>Empieza añadiendo un vídeo, una foto o música</p>
-          <button class="btn gold" id="btnHintImport">+ Añadir medios</button>
+          <button class="btn accent" id="btnHintImport">+ Añadir medios</button>
         </div>
       </div>
       <div class="transport">
-        <button class="icon-btn" id="btnToStart" aria-label="Al inicio">⏮</button>
-        <button class="play-btn" id="btnPlay" aria-label="Reproducir">▶</button>
         <div class="timecode"><b id="tcNow">0:00.0</b><span> / </span><span id="tcTotal">0:00.0</span></div>
-        <div class="spacer"></div>
-        <button class="icon-btn" id="btnFull" aria-label="Pantalla completa" title="Ver a pantalla completa">⛶</button>
+        <div class="tr-mid">
+          <button class="icon-btn flat" id="btnToStart" aria-label="Al inicio">⏮</button>
+          <button class="play-btn" id="btnPlay" aria-label="Reproducir">▶</button>
+        </div>
+        <div class="tr-right">
+          <button class="icon-btn flat" id="btnFull" aria-label="Pantalla completa" title="Ver a pantalla completa">⛶</button>
+        </div>
       </div>
     </section>
 
     <aside class="panel" id="panel">
-      <nav class="tabs" id="tabs">
-        <button data-tab="media" class="on"><i>🎞️</i><span>Medios</span></button>
-        <button data-tab="text"><i>🅣</i><span>Texto</span></button>
-        <button data-tab="fx"><i>✨</i><span>Efectos</span></button>
-        <button data-tab="inspect"><i>🎚️</i><span>Ajustes</span></button>
-      </nav>
+      <div class="panel-head"><b id="panelTitle">Medios</b><button class="icon-btn flat sm" id="panelClose" aria-label="Cerrar panel">✕</button></div>
       <div class="tab-body" id="tabBody"></div>
     </aside>
   </main>
@@ -66,11 +61,12 @@
       <button class="tbtn" id="tSplit"><i>✂</i><span>Dividir</span></button>
       <button class="tbtn" id="tDup"><i>⧉</i><span>Duplicar</span></button>
       <button class="tbtn danger" id="tDel"><i>🗑</i><span>Eliminar</span></button>
+      <button class="tbtn kfbtn" id="tKf" title="Añadir o quitar keyframe en el cabezal"><i>◆</i><span>Keyframe</span></button>
       <button class="tbtn" id="tSel" aria-pressed="false"><i>☑</i><span>Seleccionar</span></button>
       <div class="spacer"></div>
-      <button class="icon-btn sm" id="zOut" aria-label="Alejar">−</button>
+      <button class="icon-btn sm flat" id="zOut" aria-label="Alejar">−</button>
       <input type="range" id="zoom" min="20" max="300" value="70" aria-label="Zoom de la línea de tiempo">
-      <button class="icon-btn sm" id="zIn" aria-label="Acercar">+</button>
+      <button class="icon-btn sm flat" id="zIn" aria-label="Acercar">+</button>
     </div>
     <div class="sel-bar" id="selBar" hidden>
       <b id="selCount">0 clips</b>
@@ -84,6 +80,8 @@
       <div class="tl-inner" id="tlInner"></div>
     </div>
   </section>
+
+  <nav class="toolbar" id="toolbar" aria-label="Herramientas"></nav>
 </div>
 
 <div id="modal" class="modal" hidden></div>

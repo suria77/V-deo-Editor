@@ -1,138 +1,294 @@
-// Paneles laterales: Medios, Texto, Efectos y Ajustes (inspector del clip seleccionado).
-import { state, bus, commit, selectedClip, selectedClips, removeClips, duplicateClips, splitClips } from './state.js';
-import { h, slider, select, toggle, color, chips, section, fmtTime, toast } from './ui.js';
+// Barra de herramientas inferior (estilo CapCut/DaVinci) + panel de la herramienta elegida.
+import { state, bus, commit, selectedClip, selectedClips, removeClips, duplicateClips, splitClips, select } from './state.js';
+import { h, slider, select as selectCtl, toggle, color, chips, section, fmtTime, toast } from './ui.js';
 import {
   ADJ_CONTROLS, ADJ_DEFAULT, FILTERS, MOTIONS, TRANSITIONS, BLENDS, MASKS, FONTS,
   TEXT_IN, TEXT_OUT, TEXT_LOOP, TEXT_STYLES, PARTICLES, POSTFX,
 } from './presets.js';
+import { icon } from './icons.js';
+import { propsFor, valueAt, setValue, setKf, removeKf, kfAt, hasKf, kfTimes, anyKfAt, toggleAllKf, anyKf } from './kf.js';
+
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const fmtNum = (v, step) => Number(v).toFixed(step >= 1 ? 0 : step >= 0.1 ? 1 : 2);
+
+// Herramientas cuando no hay nada seleccionado
+const MAIN_TOOLS = [
+  { id: 'media', n: 'Medios', i: 'media' },
+  { id: 'audio', n: 'Audio', i: 'audio' },
+  { id: 'text', n: 'Texto', i: 'text' },
+  { id: 'fx', n: 'Efectos', i: 'fx' },
+  { id: 'overlay', n: 'Superposición', i: 'overlay' },
+  { id: 'subs', n: 'Subtítulos', i: 'subs' },
+  { id: 'filter', n: 'Filtros', i: 'filters', clip: true },
+  { id: 'adj', n: 'Ajustar', i: 'adjust', clip: true },
+  { id: 'aspect', n: 'Formato', i: 'aspect', act: 'aspect' },
+  { id: 'bg', n: 'Fondo', i: 'bg' },
+];
+
+// Herramientas de cada tipo de clip ( act = acción directa; el resto abre su sección )
+const A = (id, n, i, extra = {}) => ({ id, n, i, ...extra });
+const CLIP_TOOLS = {
+  video: [A('split', 'Dividir', 'split', { act: 'split' }), A('speed', 'Velocidad', 'speed'), A('vol', 'Volumen', 'volume'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }),
+    A('pos', 'Posición', 'pos'), A('opac', 'Opacidad', 'opacity'), A('filter', 'Filtros', 'filters'), A('adj', 'Ajustar', 'adjust'),
+    A('motion', 'Movimiento', 'motion'), A('trans', 'Transición', 'trans'), A('mask', 'Máscara', 'mask'), A('key', 'Croma', 'chroma'),
+    A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' }), A('all', 'Todo', 'all')],
+  text: [A('txt', 'Editar', 'edit'), A('tstyle', 'Estilo', 'style'), A('tpos', 'Posición', 'pos'), A('tanim', 'Animación', 'anim'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }),
+    A('split', 'Dividir', 'split', { act: 'split' }), A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' }), A('all', 'Todo', 'all')],
+  fx: [A('fxp', 'Ajustes', 'adjust'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }), A('split', 'Dividir', 'split', { act: 'split' }), A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' })],
+  audio: [A('vol', 'Volumen', 'volume'), A('speed', 'Velocidad', 'speed'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }), A('split', 'Dividir', 'split', { act: 'split' }),
+    A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' })],
+};
+CLIP_TOOLS.image = CLIP_TOOLS.video.filter((t) => t.id !== 'speed' && t.id !== 'vol');
+const DEFAULT_SEC = { video: 'pos', image: 'pos', text: 'txt', fx: 'fxp', audio: 'vol' };
+const MAIN_IDS = new Set(MAIN_TOOLS.map((t) => t.id).filter((id) => id !== 'filter' && id !== 'adj'));
+const TITLES = { all: 'Todos los ajustes', kf: 'Keyframes', fxp: 'Efecto', txt: 'Texto', tstyle: 'Estilo del texto', tpos: 'Posición', tanim: 'Animación', pos: 'Posición y tamaño', opac: 'Opacidad y fusión', filter: 'Filtros', adj: 'Ajustar color', motion: 'Movimiento', trans: 'Transiciones', mask: 'Recorte y máscara', key: 'Pantalla verde (croma)', speed: 'Velocidad', vol: 'Volumen y sonido' };
 
 export class Panels {
   constructor(app) {
     this.app = app;
-    this.tab = 'media';
+    this.tool = 'media';
+    this.root = document.getElementById('app');
     this.body = document.getElementById('tabBody');
-    this.fxSeg = 'particles';
-    this.openSecs = new Set(['pos', 'txt', 'fxp', 'aud']);
-    document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.tab)));
-    bus.on('select', () => {
-      if (state.selection && !state.selectMode) this.show('inspect');
-      else if (this.tab === 'inspect') this.render();
+    this.titleEl = document.getElementById('panelTitle');
+    this.tb = document.getElementById('toolbar');
+    this.refreshers = [];
+    this.wideMq = window.matchMedia('(min-width: 1000px)');
+    document.getElementById('panelClose').addEventListener('click', () => this.close());
+    if (!this.wideMq.matches) this.root.classList.remove('panel-open');
+    this.wideMq.addEventListener && this.wideMq.addEventListener('change', () => { if (this.wideMq.matches && !this.isOpen()) this.open(this.tool); });
+
+    bus.on('select', () => this.onSelect());
+    bus.on('selectmode', () => { if (this.isClipTool()) this.render(); });
+    bus.on('change', (e) => {
+      if (!this.isOpen()) return;
+      if (e && (e.structural || e.timing) && this.isClipTool() && !(e && e.keepPanel)) this.render();
+      else if (e && e.structural && (this.tool === 'media' || this.tool === 'audio' || this.tool === 'overlay' || this.tool === 'subs')) this.render();
     });
-    bus.on('selectmode', () => { if (this.tab === 'inspect') this.render(); });
-    bus.on('change', (e) => { if (e && (e.structural || e.timing) && this.tab === 'inspect') this.render(); else if (e && e.structural && this.tab === 'media') this.render(); });
-    bus.on('media', () => { if (this.tab === 'media') this.render(); });
+    bus.on('media', () => { if (this.isOpen() && (this.tool === 'media' || this.tool === 'audio' || this.tool === 'overlay')) this.render(); });
+    let raf = 0;
+    bus.on('time', () => { if (raf || !this.refreshers.length || !this.isOpen()) return; raf = requestAnimationFrame(() => { raf = 0; for (const f of this.refreshers) f(); }); });
+    bus.on('kf', () => { for (const f of this.refreshers) f(); });
+    this.renderToolbar();
     this.render();
   }
 
-  show(tab) {
-    this.tab = tab;
-    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  isOpen() { return this.root.classList.contains('panel-open'); }
+  isClipTool() { return !MAIN_IDS.has(this.tool); }
+
+  open(tool) {
+    this.tool = tool;
+    this.root.classList.add('panel-open');
     this.render();
+    this.renderToolbar();
+  }
+  close() {
+    this.root.classList.remove('panel-open');
+    this.refreshers = [];
+    this.renderToolbar();
+  }
+  // compatibilidad con el resto de la app
+  show(tool) { this.open(tool === 'inspect' ? this.defaultClipSec() : tool); }
+
+  defaultClipSec() { const c = selectedClip(); return c ? DEFAULT_SEC[c.type] || 'all' : 'media'; }
+
+  onSelect() {
+    const c = selectedClip();
+    this.renderToolbar();
+    if (state.selectMode) { if (this.isOpen() && this.isClipTool()) this.render(); return; }
+    if (c) {
+      const tools = CLIP_TOOLS[c.type] || [];
+      const valid = this.tool === 'all' || tools.some((t) => t.id === this.tool && !t.act);
+      if (this.isOpen() && this.isClipTool() && valid) this.render();
+      else if (this.wideMq.matches) this.open(this.defaultClipSec());
+      else if (this.isOpen() && this.isClipTool()) this.open(this.defaultClipSec());
+    } else if (this.isClipTool()) {
+      if (this.wideMq.matches) this.open('media'); else this.close();
+    }
+  }
+
+  // ---------------- barra inferior ----------------
+  renderToolbar() {
+    const tb = this.tb;
+    tb.innerHTML = '';
+    const c = selectedClip();
+    const open = this.isOpen();
+    const btn = (t, onclick) => {
+      const b = h('button', { class: 'tool' + (t.cls ? ' ' + t.cls : '') + (open && this.tool === t.id && !t.act ? ' on' : ''), title: t.n }, icon(t.i), h('span', {}, t.n));
+      b.addEventListener('click', onclick);
+      return b;
+    };
+    if (!c) {
+      for (const t of MAIN_TOOLS) tb.append(btn(t, () => this.runMain(t)));
+      return;
+    }
+    const back = h('button', { class: 'tool back', title: 'Volver' }, icon('back'), h('span', {}, 'Volver'));
+    back.addEventListener('click', () => { state.selection = null; state.sel.clear(); bus.emit('select'); });
+    tb.append(back);
+    for (const t of CLIP_TOOLS[c.type] || []) tb.append(btn(t, () => this.runClip(t)));
+  }
+
+  runMain(t) {
+    if (t.act === 'aspect') { this.app.openProject(); return; }
+    if (t.clip) {
+      // Filtros / Ajustar: actúan sobre el clip de vídeo que hay bajo el cabezal
+      const k = state.project.clips.find((x) => (x.type === 'video' || x.type === 'image') && x.lane === 'video' && state.time >= x.start && state.time < x.start + x.dur)
+        || state.project.clips.find((x) => x.type === 'video' || x.type === 'image');
+      if (!k) { toast('Añade primero un vídeo o una foto'); return; }
+      select(k.id);
+      this.open(t.id);
+      return;
+    }
+    if (this.isOpen() && this.tool === t.id && !this.wideMq.matches) { this.close(); return; }
+    this.open(t.id);
+  }
+
+  runClip(t) {
+    const ids = [...state.sel];
+    if (t.act === 'split') { if (!splitClips(ids, state.time).length) toast('Coloca el cabezal dentro del clip para dividirlo'); return; }
+    if (t.act === 'dup') { duplicateClips(ids); return; }
+    if (t.act === 'del') { removeClips(ids); return; }
+    if (this.isOpen() && this.tool === t.id && !this.wideMq.matches) { this.close(); return; }
+    this.open(t.id);
   }
 
   render() {
     const st = this.body.scrollTop;
+    const prevTool = this._lastTool;
     this.body.innerHTML = '';
-    const f = { media: this.mediaTab, text: this.textTab, fx: this.fxTab, inspect: this.inspectTab }[this.tab];
-    f.call(this);
-    if (this.tab === 'inspect') this.body.scrollTop = st;
+    this.body.classList.remove('solo');
+    this.refreshers = [];
+    const c = selectedClip();
+    if (this.isClipTool() && !c) this.tool = 'media';
+    const main = { media: this.mediaTab, audio: this.audioTab, text: this.textTab, fx: this.fxTab, overlay: this.overlayTab, subs: this.subsTab, bg: this.bgTab }[this.tool];
+    if (main) {
+      this.titleEl.textContent = (MAIN_TOOLS.find((t) => t.id === this.tool) || {}).n || '';
+      main.call(this);
+    } else {
+      this.titleEl.textContent = TITLES[this.tool] || 'Ajustes';
+      this.inspectTab(this.tool);
+    }
+    if (prevTool === this.tool) this.body.scrollTop = st;
+    this._lastTool = this.tool;
   }
 
   // ---------------- MEDIOS ----------------
+  mediaGrid(list, onPick) {
+    const g = h('div', { class: 'grid' });
+    for (const m of list) {
+      const th = h('div', { class: 'th', style: m.thumb ? `background-image:url(${m.thumb})` : 'background:linear-gradient(135deg,#4d5866,#3b4250)' }, m.thumb ? '' : (m.kind === 'audio' ? '🎵' : '🎞️'));
+      g.append(h('button', { class: 'card media-card', onclick: () => onPick(m) },
+        th, h('div', { class: 'nm' }, m.name), h('span', { class: 'add' }, '+'),
+        m.duration ? h('span', { class: 'dur' }, fmtTime(m.duration, false)) : null));
+    }
+    return g;
+  }
+
   mediaTab() {
     const b = this.body;
-    b.append(h('h3', {}, 'Tus medios'));
     b.append(h('div', { class: 'row-btns' },
-      h('button', { class: 'btn gold', onclick: () => this.app.pickFiles() }, '+ Importar'),
+      h('button', { class: 'btn accent', onclick: () => this.app.pickFiles() }, '+ Importar'),
       h('button', { class: 'btn', onclick: () => this.app.recordVoice() }, '🎙️ Grabar voz')));
     const list = [...state.media.values()];
     if (!list.length) {
       b.append(h('p', { class: 'hint' }, 'Importa vídeos, fotos o música desde tu iPad o tu ordenador. Toca una miniatura para añadirla a la línea de tiempo.'));
       return;
     }
-    b.append(h('p', { class: 'hint' }, 'Toca para añadir a la línea de tiempo (los vídeos y fotos se ponen al final de la pista principal; el audio, donde está el cabezal).'));
-    const g = h('div', { class: 'grid' });
-    for (const m of list) {
-      const th = h('div', { class: 'th', style: m.thumb ? `background-image:url(${m.thumb})` : 'background:linear-gradient(135deg,#3f7cc4,#7a5cc4)' }, m.thumb ? '' : (m.kind === 'audio' ? '🎵' : '🎞️'));
-      const card = h('button', { class: 'card media-card', onclick: () => this.app.addMediaToTimeline(m) },
-        th, h('div', { class: 'nm' }, m.name), h('span', { class: 'add' }, '+'),
-        m.duration ? h('span', { class: 'dur' }, fmtTime(m.duration, false)) : null);
-      g.append(card);
-    }
-    b.append(g);
-    b.append(h('p', { class: 'hint', style: 'margin-top:14px' }, '💡 Para poner un vídeo encima de otro (pantalla verde, imagen en imagen, efectos de fuego reales…) añádelo y en Ajustes cambia su capa a «Superpuesto».'));
+    b.append(h('p', { class: 'hint' }, 'Toca para añadir: los vídeos y fotos van al final de la pista principal; el audio, donde está el cabezal.'));
+    b.append(this.mediaGrid(list, (m) => this.app.addMediaToTimeline(m)));
   }
+
+  audioTab() {
+    const b = this.body;
+    b.append(h('div', { class: 'row-btns' },
+      h('button', { class: 'btn accent', onclick: () => this.app.pickFiles({ accept: 'audio/*,.mp3,.m4a,.wav,.aac,.ogg' }) }, '+ Música o sonido'),
+      h('button', { class: 'btn', onclick: () => this.app.recordVoice() }, '🎙️ Grabar voz')));
+    const list = [...state.media.values()].filter((m) => m.kind === 'audio');
+    if (list.length) {
+      b.append(h('p', { class: 'hint' }, 'Toca para ponerlo donde está el cabezal:'));
+      b.append(this.mediaGrid(list, (m) => this.app.addMediaToTimeline(m)));
+    }
+    b.append(h('p', { class: 'hint', style: 'margin-top:14px' }, '💡 Toca un clip de audio (o de vídeo) en la línea de tiempo y usa «Volumen» o «Keyframes» para subir y bajar el sonido a lo largo del tiempo.'));
+  }
+
+  overlayTab() {
+    const b = this.body;
+    b.append(h('button', { class: 'btn accent block', onclick: () => this.app.pickFiles({ accept: 'video/*,image/*', lane: 'overlay' }) }, '+ Importar para superponer'));
+    b.append(h('p', { class: 'hint', style: 'margin-top:12px' }, 'Lo que añadas aquí se pone encima del vídeo principal, donde está el cabezal: imagen en imagen, pantalla verde, luces, fuego sobre negro…'));
+    const list = [...state.media.values()].filter((m) => m.kind !== 'audio');
+    if (list.length) b.append(this.mediaGrid(list, (m) => this.app.addMediaToTimeline(m, false, 'overlay')));
+  }
+
+  subsTab() {
+    const b = this.body;
+    b.append(h('button', { class: 'btn accent block', style: 'margin-bottom:10px', onclick: () => this.app.openSubtitles() }, '✨ Crear subtítulos automáticos'));
+    const n = this.app.subCount ? this.app.subCount() : 0;
+    b.append(h('button', { class: 'btn block', onclick: () => this.app.openSubEditor() }, n ? `✏️ Revisar subtítulos (${n})` : '📄 Importar un archivo .srt'));
+    b.append(h('p', { class: 'hint', style: 'margin-top:14px' }, 'La voz se convierte en texto en tu propio dispositivo. Luego puedes corregir cada línea, y cambiar el estilo tocando un subtítulo y eligiendo «Estilo».'));
+  }
+
+  bgTab() { this.projectFields(this.body); }
 
   // ---------------- TEXTO ----------------
   textTab() {
     const b = this.body;
-    b.append(h('h3', {}, 'Texto'));
-    b.append(h('button', { class: 'btn plum block', style: 'margin-bottom:10px', onclick: () => this.app.openSubtitles() }, '💬 Subtítulos automáticos'));
-    const n = this.app.subCount ? this.app.subCount() : 0;
-    if (n) b.append(h('button', { class: 'btn block', style: 'margin-bottom:10px', onclick: () => this.app.openSubEditor() }, `✏️ Revisar subtítulos (${n})`));
-    b.append(h('button', { class: 'btn gold block', onclick: () => this.app.addText({}) }, '+ Añadir texto'));
+    b.append(h('button', { class: 'btn accent block', onclick: () => this.app.addText({}) }, '+ Añadir texto'));
+    b.append(h('button', { class: 'btn block', style: 'margin-top:10px', onclick: () => this.open('subs') }, '💬 Subtítulos automáticos'));
     b.append(h('p', { class: 'hint', style: 'margin-top:14px' }, 'O elige un estilo ya preparado (con su animación):'));
     const g = h('div', { class: 'grid' });
-    for (const s of TEXT_STYLES) {
-      g.append(h('button', { class: 'card style-card', onclick: () => this.app.addText(s.p) }, h('span', { style: s.css }, 'Aa'), h('small', {}, s.n)));
-    }
+    for (const s of TEXT_STYLES) g.append(h('button', { class: 'card style-card', onclick: () => this.app.addText(s.p) }, h('span', { style: s.css }, 'Aa'), h('small', {}, s.n)));
     b.append(g);
   }
 
   // ---------------- EFECTOS ----------------
   fxTab() {
     const b = this.body;
-    b.append(h('h3', {}, 'Efectos'));
+    if (!this.fxSeg) this.fxSeg = 'particles';
     const seg = h('div', { class: 'seg' });
     const mk = (id, n) => h('button', { class: this.fxSeg === id ? 'on' : '', onclick: () => { this.fxSeg = id; this.render(); } }, n);
-    seg.append(mk('particles', '🔥 Ambiente'), mk('post', '🎬 Imagen'));
+    seg.append(mk('particles', '✨ Luces y ambiente'), mk('post', '🎬 Imagen'));
     b.append(seg);
     const isP = this.fxSeg === 'particles';
     b.append(h('p', { class: 'hint' }, isP
-      ? 'Fuego, niebla, partículas y luz que se dibujan encima del vídeo. Se añaden donde está el cabezal; luego puedes alargarlos y ajustarlos.'
-      : 'Efectos que transforman toda la imagen durante un tramo: glitch, VHS, temblor, flashes…'));
+      ? 'Se dibujan encima del vídeo y se añaden donde está el cabezal; luego puedes alargarlos y ajustarlos.'
+      : 'Transforman toda la imagen durante un tramo: glitch, VHS, temblor, flashes…'));
     const grid = (list) => {
       const g = h('div', { class: 'grid' });
       for (const d of list) g.append(h('button', { class: 'card', onclick: () => this.app.addFx(d.id, isP ? 'particles' : 'post') }, h('span', { class: 'em' }, d.i), d.n));
       return g;
     };
     if (isP) {
-      b.append(h('h3', { class: 'sub-h' }, '✨ Luces y estrellas'), grid(PARTICLES.filter((d) => d.cat === 'luz')));
-      b.append(h('h3', { class: 'sub-h', style: 'margin-top:18px' }, '🌿 Ambiente'), grid(PARTICLES.filter((d) => d.cat !== 'luz')));
+      b.append(h('h3', { class: 'sub-h' }, 'Luces y estrellas'), grid(PARTICLES.filter((d) => d.cat === 'luz')));
+      b.append(h('h3', { class: 'sub-h', style: 'margin-top:18px' }, 'Ambiente'), grid(PARTICLES.filter((d) => d.cat !== 'luz')));
     } else b.append(grid(POSTFX));
   }
 
-  // ---------------- AJUSTES (inspector) ----------------
-  inspectTab() {
+  // ---------------- AJUSTES DEL CLIP ----------------
+  inspectTab(only = 'all') {
     const b = this.body;
     const c = selectedClip();
-    if (!c) {
-      b.append(h('h3', {}, 'Ajustes'));
-      b.append(h('p', { class: 'hint' }, 'Toca un clip en la línea de tiempo (o sobre la imagen) para ver aquí todas sus opciones: color, movimiento, transiciones, máscara, velocidad, animaciones…'));
-      this.projectFields(b);
-      return;
-    }
+    if (!c) return;
     const app = this.app;
-    // ----- edición en grupo: los cambios del clip principal se copian a los demás del mismo tipo -----
+    const solo = only !== 'all';
+    if (solo) b.classList.add('solo');
     const sel = selectedClips();
     const multi = sel.length > 1;
     const kindOf = (k) => (k.type === 'image' ? 'video' : k.type);
     const GROUPS = {
       video: ['tf', 'crop', 'mask', 'adj', 'filter', 'filterAmt', 'chroma', 'blend', 'motion', 'transIn', 'transOut', 'volume', 'muted', 'afadeIn', 'afadeOut', 'lane'],
-      text: ['font', 'weight', 'italic', 'upper', 'size', 'color', 'color2', 'stroke', 'shadow', 'bg', 'spacing', 'lineHeight', 'width', 'align', 'rot', 'x', 'y', 'inAnim', 'outAnim', 'loop'],
+      text: ['font', 'weight', 'italic', 'upper', 'size', 'color', 'color2', 'stroke', 'shadow', 'bg', 'spacing', 'lineHeight', 'width', 'align', 'rot', 'x', 'y', 'opacity', 'inAnim', 'outAnim', 'loop', 'karaoke'],
       fx: ['intensity', 'speed', 'size', 'color', 'fade'],
       audio: ['volume', 'afadeIn', 'afadeOut'],
     };
     const pickGroups = (k) => { const o = {}; for (const g of GROUPS[kindOf(k)] || []) if (g in k) o[g] = structuredClone(k[g]); return o; };
-    const diffLeaves = (a, b, path = [], out = []) => {
-      for (const key of Object.keys(b)) {
-        const x = a ? a[key] : undefined, y = b[key];
+    const diffLeaves = (a, bb, path = [], out = []) => {
+      for (const key of Object.keys(bb)) {
+        const x = a ? a[key] : undefined, y = bb[key];
         if (y && typeof y === 'object' && !Array.isArray(y)) diffLeaves(x || {}, y, [...path, key], out);
         else if (x !== y) out.push([[...path, key], y]);
       }
       return out;
     };
-    const setPath = (k, path, val) => {
+    const setPathM = (k, path, val) => {
       let o = k;
       for (let i = 0; i < path.length - 1; i++) { if (!o || !(path[i] in o)) return; o = o[path[i]]; }
       if (o && path[0] in k) o[path[path.length - 1]] = val;
@@ -142,21 +298,59 @@ export class Panels {
     const propagate = () => {
       if (!same.length) return;
       const cur = pickGroups(c);
-      const diffs = diffLeaves(snap, cur);
-      for (const k of same) for (const [path, val] of diffs) setPath(k, path, val);
+      for (const k of same) for (const [path, val] of diffLeaves(snap, cur)) setPathM(k, path, val);
       snap = cur;
     };
     const live = () => { propagate(); app.changed(); };
     const done = () => { propagate(); commit(); };
     const ids = [...state.sel];
-    const sec = (key, title, icon, ...kids) => {
-      const d = section(title, icon, this.openSecs.has(key), ...kids);
-      d.addEventListener('toggle', () => { if (d.open) this.openSecs.add(key); else this.openSecs.delete(key); });
-      return d;
+    const sec = (key, title, icn, ...kids) => {
+      if (solo && key !== only) return null;
+      return section(title, icn, true, ...kids);
     };
     const S = (label, obj, key, min, max, step, fmt) => slider(label, obj[key], min, max, step, (v) => { obj[key] = v; live(); }, done, fmt);
     const pct = (v) => Math.round(v * 100) + '%';
     const secs = (v) => v.toFixed(1) + ' s';
+    const ltNow = () => clamp(state.time - c.start, 0, c.dur);
+    const inside = () => state.time >= c.start - 1e-3 && state.time <= c.start + c.dur + 1e-3;
+
+    // Control con keyframe (◆): si la propiedad está animada, mover el control crea/ajusta el keyframe en el cabezal
+    const KS = (label, path, min, max, step, fmt, onCommit) => {
+      const out = h('output');
+      const inp = h('input', { type: 'range', min, max, step });
+      const kb = h('button', { class: 'kfd', title: 'Añadir o quitar keyframe aquí', 'aria-label': 'Keyframe' }, '◆');
+      const show = (v) => { out.textContent = fmt ? fmt(v) : fmtNum(v, step); };
+      const sync = () => {
+        const lt = ltNow(), v = valueAt(c, path, lt);
+        if (document.activeElement !== inp) inp.value = v;
+        show(v);
+        kb.className = 'kfd' + (kfAt(c, path, lt) ? ' on' : hasKf(c, path) ? ' has' : '');
+      };
+      inp.addEventListener('input', () => {
+        const v = parseFloat(inp.value);
+        setValue(c, path, ltNow(), v);
+        show(v);
+        kb.className = 'kfd' + (kfAt(c, path, ltNow()) ? ' on' : hasKf(c, path) ? ' has' : '');
+        live();
+      });
+      inp.addEventListener('change', () => { done(); onCommit && onCommit(); bus.emit('kf'); });
+      inp.addEventListener('dblclick', () => {
+        const def = min < 0 ? 0 : (min <= 1 && max >= 1 ? 1 : min);
+        setValue(c, path, ltNow(), def); sync(); live(); done(); onCommit && onCommit();
+      });
+      kb.addEventListener('click', () => {
+        if (!inside()) { toast('Pon el cabezal dentro del clip para poner un keyframe'); return; }
+        const lt = ltNow();
+        if (kfAt(c, path, lt)) removeKf(c, path, lt); else setKf(c, path, lt, valueAt(c, path, lt));
+        app.changed(); onCommit && onCommit(); commit(); bus.emit('kf');
+      });
+      sync();
+      this.refreshers.push(sync);
+      return h('div', { class: 'field' }, h('label', {}, label, out, kb), inp);
+    };
+    const kfDef = (path) => propsFor(c).find((p) => p[0] === path);
+    const K = (path, label, onCommit) => { const d = kfDef(path); return KS(label || d[1], path, d[2], d[3], d[4], d[5], onCommit); };
+    const audioChanged = () => app.audioChanged();
 
     // cabecera
     const meta = {
@@ -168,46 +362,52 @@ export class Panels {
     if (m) title = m.name;
     if (c.type === 'fx') { const d = (c.kind === 'particles' ? PARTICLES : POSTFX).find((p) => p.id === c.fx); if (d) title = d.n; }
     if (c.type === 'text') title = c.text.split('\n')[0] || 'Texto';
-    b.append(h('div', { class: 'clip-head' }, h('span', { class: 'badge', style: `background:${multi ? 'var(--plum)' : c.lane === 'overlay' ? 'var(--clip-over)' : meta[1]}` }, multi ? '☑' : meta[0]), h('b', {}, multi ? `${sel.length} clips seleccionados` : title)));
-    if (multi) b.append(h('p', { class: 'hint' }, same.length ? `Todo lo que cambies aquí se aplica a los ${same.length + 1} clips de tipo «${meta[2]}» (el que tocaste último es «${title}»). Los clips de otro tipo no cambian.` : `Los ${sel.length} clips seleccionados son de tipos distintos: aquí solo cambia el último que tocaste («${title}»).`));
-    b.append(h('div', { class: 'mini-btns' },
-      h('button', { class: 'btn', onclick: () => { if (!splitClips(ids, state.time).length) toast('Coloca el cabezal dentro del clip para dividirlo'); } }, '✂ Dividir'),
-      h('button', { class: 'btn', onclick: () => duplicateClips(ids) }, '⧉ Duplicar'),
-      h('button', { class: 'btn danger', onclick: () => removeClips(ids) }, multi ? `🗑 ${sel.length}` : '🗑')));
+    b.append(h('div', { class: 'clip-head' }, h('span', { class: 'badge', style: `background:${multi ? 'var(--accent)' : c.lane === 'overlay' ? 'var(--clip-over)' : meta[1]}` }, multi ? '☑' : meta[0]), h('b', {}, multi ? `${sel.length} clips seleccionados` : title)));
+    if (multi) b.append(h('p', { class: 'hint' }, same.length ? `Lo que cambies aquí se aplica a los ${same.length + 1} clips de tipo «${meta[2]}». Los keyframes solo al último que tocaste.` : `Los clips seleccionados son de tipos distintos: aquí solo cambia el último que tocaste («${title}»).`));
+    if (!solo) {
+      b.append(h('div', { class: 'mini-btns' },
+        h('button', { class: 'btn', onclick: () => { if (!splitClips(ids, state.time).length) toast('Coloca el cabezal dentro del clip para dividirlo'); } }, '✂ Dividir'),
+        h('button', { class: 'btn', onclick: () => duplicateClips(ids) }, '⧉ Duplicar'),
+        h('button', { class: 'btn danger', onclick: () => removeClips(ids) }, multi ? `🗑 ${sel.length}` : '🗑')));
+    }
 
-    // tiempos
+    // ---- keyframes ----
+    if (!solo || only === 'kf') b.append(this.kfSection(c, sec, K, app, solo));
+
     const timing = multi ? [] : [
       slider('Empieza en', c.start, 0, Math.max(60, c.start + 30), 0.1, (v) => { c.start = v; live(); }, () => { bus.emit('change', { structural: true }); done(); }, secs),
       slider('Duración', c.dur, 0.2, this.maxDur(c), 0.1, (v) => { c.dur = v; live(); }, () => { bus.emit('change', { structural: true }); done(); }, secs),
     ];
+    const speedCtl = (lo, hi) => (multi ? null : slider('Velocidad', c.speed, lo, hi, 0.05, (v) => {
+      const src = c.dur * c.speed; c.speed = v; c.dur = Math.max(0.1, src / v);
+      if (m && m.duration) c.dur = Math.min(c.dur, (m.duration - c.in) / v);
+      live();
+    }, () => { bus.emit('change', { structural: true }); app.audioChanged(); done(); }, (v) => v.toFixed(2) + '×'));
 
     if (c.type === 'video' || c.type === 'image') {
       const tf = c.tf;
       b.append(sec('pos', 'Posición y tamaño', '📐',
-        h('div', { class: 'field' }, h('label', {}, 'Encaje'), chips([{ id: 'cover', n: 'Llenar', i: '⬛' }, { id: 'contain', n: 'Ajustar', i: '🔲' }], tf.fit, (v) => { tf.fit = v; live(); done(); })),
+        h('div', { class: 'field' }, h('label', {}, 'Encaje'), chips([{ id: 'cover', n: 'Llenar', i: '⬛' }, { id: 'contain', n: 'Ajustar', i: '🔲' }], tf.fit, (v) => { tf.fit = v; live(); done(); this.render(); })),
         tf.fit === 'contain' ? toggle('Fondo desenfocado', tf.bgBlur, (v) => { tf.bgBlur = v; live(); done(); }) : null,
-        S('Escala', tf, 'scale', 0.1, 4, 0.01, pct),
-        S('Posición horizontal', tf, 'x', -1, 1, 0.01),
-        S('Posición vertical', tf, 'y', -1, 1, 0.01),
-        S('Rotación', tf, 'rot', -180, 180, 1, (v) => v + '°'),
-        S('Opacidad', tf, 'opacity', 0, 1, 0.01, pct),
+        K('tf.scale'), K('tf.x'), K('tf.y'), K('tf.rot'),
         h('div', { class: 'two' }, toggle('Espejo ↔', tf.flipX, (v) => { tf.flipX = v; live(); done(); }), toggle('Voltear ↕', tf.flipY, (v) => { tf.flipY = v; live(); done(); })),
-        select('Capa', [{ id: 'video', n: 'Vídeo principal' }, { id: 'overlay', n: 'Superpuesto (encima)' }], c.lane, (v) => { c.lane = v; propagate(); bus.emit('change', { structural: true }); done(); }),
+        selectCtl('Capa', [{ id: 'video', n: 'Vídeo principal' }, { id: 'overlay', n: 'Superpuesto (encima)' }], c.lane, (v) => { c.lane = v; propagate(); bus.emit('change', { structural: true }); done(); }),
         ...timing,
-        h('p', { class: 'hint' }, '💡 También puedes arrastrar la imagen con el dedo para moverla y pellizcar para cambiar el tamaño.')));
+        h('p', { class: 'hint' }, '💡 También puedes arrastrar la imagen con el dedo y pellizcar para cambiar el tamaño. Con ◆ animas cualquier valor.')));
+
+      b.append(sec('opac', 'Opacidad y fusión', '🌗',
+        K('tf.opacity'),
+        selectCtl('Modo de fusión', BLENDS, c.blend, (v) => { c.blend = v; live(); done(); }),
+        h('p', { class: 'hint' }, '«Pantalla» quita el negro: perfecto para vídeos de fuego, chispas o luces sobre fondo negro.')));
+
+      b.append(sec('filter', 'Filtros', '🎨',
+        chips(Object.entries(FILTERS).map(([id, f]) => ({ id, n: f.n })), c.filter, (v) => { c.filter = v; live(); done(); }),
+        S('Intensidad del filtro', c, 'filterAmt', 0, 1, 0.01, pct)));
 
       const adjBox = h('div');
-      const buildAdj = () => {
-        adjBox.innerHTML = '';
-        for (const a of ADJ_CONTROLS) adjBox.append(S(a.n, c.adj, a.k, a.min, a.max, a.step || 0.01, a.step === 1 ? (v) => v + '°' : null));
-      };
-      buildAdj();
-      b.append(sec('color', 'Color y filtros', '🎨',
-        h('div', { class: 'field' }, h('label', {}, 'Filtro')),
-        chips(Object.entries(FILTERS).map(([id, f]) => ({ id, n: f.n })), c.filter, (v) => { c.filter = v; live(); done(); }),
-        S('Intensidad del filtro', c, 'filterAmt', 0, 1, 0.01, pct),
-        adjBox,
-        h('button', { class: 'btn block', style: 'margin-top:12px', onclick: () => { c.adj = { ...ADJ_DEFAULT }; c.filter = 'none'; live(); done(); this.render(); } }, '↺ Restablecer color')));
+      for (const a of ADJ_CONTROLS) adjBox.append(S(a.n, c.adj, a.k, a.min, a.max, a.step || 0.01, a.step === 1 ? (v) => v + '°' : null));
+      b.append(sec('adj', 'Ajustar color', '🎚️', adjBox,
+        h('button', { class: 'btn block', style: 'margin-top:12px', onclick: () => { c.adj = { ...ADJ_DEFAULT }; live(); done(); this.render(); } }, '↺ Restablecer')));
 
       b.append(sec('motion', 'Movimiento', '🎥',
         chips(MOTIONS, c.motion.type, (v) => { c.motion.type = v; live(); done(); }),
@@ -219,44 +419,37 @@ export class Panels {
         S('Duración de entrada', c.transIn, 'dur', 0.1, 2, 0.05, secs),
         h('div', { class: 'field' }, h('label', {}, 'Al salir')),
         chips(TRANSITIONS, c.transOut.type, (v) => { c.transOut.type = v; live(); done(); app.preview(Math.max(c.start, c.start + c.dur - c.transOut.dur - 0.4), c.transOut.dur + 0.4); }),
-        S('Duración de salida', c.transOut, 'dur', 0.1, 2, 0.05, secs),
-        h('p', { class: 'hint' }, '💡 Para un fundido encadenado entre dos clips, superpón un poco el segundo sobre el primero (en otra capa) y ponle «Fundido» al entrar.')));
+        S('Duración de salida', c.transOut, 'dur', 0.1, 2, 0.05, secs)));
 
       b.append(sec('mask', 'Recorte y máscara', '✂️',
         S('Recortar izquierda', c.crop, 'l', 0, 0.45, 0.01, pct),
         S('Recortar derecha', c.crop, 'r', 0, 0.45, 0.01, pct),
         S('Recortar arriba', c.crop, 't', 0, 0.45, 0.01, pct),
         S('Recortar abajo', c.crop, 'b', 0, 0.45, 0.01, pct),
-        select('Máscara', MASKS, c.mask.type, (v) => { c.mask.type = v; live(); done(); }),
+        selectCtl('Máscara', MASKS, c.mask.type, (v) => { c.mask.type = v; live(); done(); }),
         S('Tamaño de máscara', c.mask, 'size', 0.2, 1.5, 0.01, pct),
         S('Suavizado del borde', c.mask, 'feather', 0, 1, 0.01, pct)));
 
-      b.append(sec('key', 'Pantalla verde (chroma)', '🟩',
+      b.append(sec('key', 'Pantalla verde (croma)', '🟩',
         toggle('Quitar fondo de color', c.chroma.on, (v) => { c.chroma.on = v; if (v && c.lane === 'video') toast('Consejo: pon este clip en la capa «Superpuesto» para ver lo que hay detrás'); live(); done(); }),
         color('Color a quitar', c.chroma.color, (v) => { c.chroma.color = v; live(); }, done),
-        h('button', { class: 'btn plum block', style: 'margin:6px 0 10px', onclick: () => app.pickColor(c, () => this.render()) }, '🎯 Tocar el color en la imagen'),
+        h('button', { class: 'btn block', style: 'margin:6px 0 10px', onclick: () => app.pickColor(c, () => this.render()) }, '🎯 Tocar el color en la imagen'),
         h('div', { class: 'two' },
           h('button', { class: 'btn', onclick: () => { c.chroma.color = '#00ff00'; live(); done(); this.render(); } }, '🟩 Verde'),
           h('button', { class: 'btn', onclick: () => { c.chroma.color = '#0047ff'; live(); done(); this.render(); } }, '🟦 Azul')),
         S('Tolerancia', c.chroma, 'sim', 0, 1, 0.01, pct),
         S('Suavizado', c.chroma, 'smooth', 0, 1, 0.01, pct)));
 
-      b.append(sec('blend', 'Fusión', '🌗',
-        select('Modo de fusión', BLENDS, c.blend, (v) => { c.blend = v; live(); done(); }),
-        h('p', { class: 'hint' }, '«Pantalla» quita el negro: perfecto para vídeos de fuego, chispas o luces sobre fondo negro.')));
-
       if (c.type === 'video') {
-        b.append(sec('aud', 'Velocidad y sonido', '🔊',
-          multi ? null : slider('Velocidad', c.speed, 0.25, 4, 0.05, (v) => {
-            const src = c.dur * c.speed; c.speed = v; c.dur = Math.max(0.1, src / v);
-            if (m && m.duration) c.dur = Math.min(c.dur, (m.duration - c.in) / v);
-            live();
-          }, () => { bus.emit('change', { structural: true }); done(); }, (v) => v.toFixed(2) + '×'),
-          toggle('Silenciar', c.muted, (v) => { c.muted = v; app.audioChanged(); done(); }),
-          slider('Volumen', c.volume, 0, 2, 0.01, (v) => { c.volume = v; }, () => { app.audioChanged(); done(); }, pct),
-          slider('Fundido de entrada (audio)', c.afadeIn, 0, 5, 0.1, (v) => { c.afadeIn = v; }, () => { app.audioChanged(); done(); }, secs),
-          slider('Fundido de salida (audio)', c.afadeOut, 0, 5, 0.1, (v) => { c.afadeOut = v; }, () => { app.audioChanged(); done(); }, secs),
-          m && !m.buffer ? h('p', { class: 'hint' }, 'Este vídeo no tiene sonido (o el navegador no ha podido leerlo).') : null));
+        b.append(sec('speed', 'Velocidad', '⏩', speedCtl(0.25, 4), h('p', { class: 'hint' }, 'Doble toque en el control para volver a 1×.')));
+        b.append(sec('vol', 'Volumen y sonido', '🔊',
+          toggle('Silenciar este clip', c.muted, (v) => { c.muted = v; app.audioChanged(); done(); this.render(); }),
+          c.muted ? null : K('volume', 'Volumen', audioChanged),
+          c.muted ? null : slider('Fundido de entrada', c.afadeIn, 0, 5, 0.1, (v) => { c.afadeIn = v; }, () => { app.audioChanged(); done(); }, secs),
+          c.muted ? null : slider('Fundido de salida', c.afadeOut, 0, 5, 0.1, (v) => { c.afadeOut = v; }, () => { app.audioChanged(); done(); }, secs),
+          m && m.audioFallback ? h('p', { class: 'hint' }, 'ℹ️ El navegador no pudo separar el sonido de este vídeo (suele pasar con archivos muy grandes). Sonará directamente al reproducir, pero en iPad el volumen y los fundidos no se aplican y no se incluirá al exportar.') : null,
+          m && !m.buffer && !m.audioFallback ? h('p', { class: 'hint' }, 'Este vídeo no tiene sonido.') : null,
+          h('p', { class: 'hint' }, '💡 Con ◆ puedes poner keyframes de volumen: por ejemplo, bajar la música mientras hablas.')));
       }
     } else if (c.type === 'text') {
       const ta = h('textarea', {}, c.text);
@@ -266,17 +459,18 @@ export class Panels {
         multi ? null : ta,
         h('div', { class: 'field' }, h('label', {}, 'Estilos rápidos')),
         h('div', { class: 'grid' }, ...TEXT_STYLES.map((s) => h('button', { class: 'card style-card', onclick: () => { Object.assign(c, structuredClone(s.p)); live(); done(); this.render(); } }, h('span', { style: s.css }, 'Aa'), h('small', {}, s.n)))),
-        select('Tipo de letra', FONTS.map((f) => ({ id: f.f, n: f.n })), c.font, (v) => { c.font = v; live(); done(); }),
-        S('Tamaño', c, 'size', 0.02, 0.25, 0.002, (v) => Math.round(v * 1000) / 10 + ''),
+        ...timing));
+
+      b.append(sec('tstyle', 'Estilo', '🎨',
+        selectCtl('Tipo de letra', FONTS.map((f) => ({ id: f.f, n: f.n })), c.font, (v) => { c.font = v; live(); done(); }),
+        K('size'),
         h('div', { class: 'field' }, h('label', {}, 'Grosor'), chips([{ id: 400, n: 'Normal' }, { id: 700, n: 'Negrita' }, { id: 900, n: 'Extra' }], c.weight, (v) => { c.weight = v; live(); done(); })),
         h('div', { class: 'two' }, toggle('Cursiva', c.italic, (v) => { c.italic = v; live(); done(); }), toggle('MAYÚSCULAS', c.upper, (v) => { c.upper = v; live(); done(); })),
         h('div', { class: 'field' }, h('label', {}, 'Alineación'), chips([{ id: 'left', n: 'Izquierda' }, { id: 'center', n: 'Centro' }, { id: 'right', n: 'Derecha' }], c.align, (v) => { c.align = v; live(); done(); })),
-        ...timing));
-
-      b.append(sec('tstyle', 'Color, borde y sombra', '🎨',
         color('Color', c.color, (v) => { c.color = v; live(); }, done),
         toggle('Degradado de color', !!c.color2, (v) => { c.color2 = v ? '#c8921a' : ''; live(); done(); this.render(); }),
         c.color2 ? color('Segundo color', c.color2, (v) => { c.color2 = v; live(); }, done) : null,
+        c.karaoke ? color('Color de la palabra que suena', c.karaoke.color, (v) => { c.karaoke.color = v; live(); }, done) : null,
         S('Borde', c.stroke, 'w', 0, 0.03, 0.001, (v) => Math.round(v * 1000) + ''),
         color('Color del borde', c.stroke.color, (v) => { c.stroke.color = v; live(); }, done),
         S('Sombra / brillo', c.shadow, 'blur', 0, 1.5, 0.01, pct),
@@ -288,10 +482,8 @@ export class Panels {
         S('Interlineado', c, 'lineHeight', 0.8, 2, 0.01)));
 
       b.append(sec('tpos', 'Posición', '📐',
-        S('Horizontal', c, 'x', -1, 1, 0.01),
-        S('Vertical', c, 'y', -1, 1, 0.01),
+        K('x'), K('y'), K('rot'), K('opacity'),
         S('Ancho máximo', c, 'width', 0.2, 1, 0.01, pct),
-        S('Rotación', c, 'rot', -180, 180, 1, (v) => v + '°'),
         h('p', { class: 'hint' }, '💡 Arrastra el texto sobre la imagen para colocarlo, y pellizca para cambiar su tamaño.')));
 
       b.append(sec('tanim', 'Animación', '✨',
@@ -309,22 +501,69 @@ export class Panels {
       const list = isP ? PARTICLES : POSTFX;
       b.append(sec('fxp', 'Efecto', '✨',
         chips(list.map((d) => ({ id: d.id, n: d.n, i: d.i })), c.fx, (v) => { c.fx = v; const d = list.find((x) => x.id === v); if (isP && d.color) c.color = d.color; bus.emit('change', { structural: true }); done(); }),
-        S('Intensidad', c, 'intensity', 0, 1, 0.01, pct),
+        K('intensity'),
         S('Velocidad', c, 'speed', 0.1, 3, 0.05, (v) => v.toFixed(2) + '×'),
-        isP ? S('Tamaño', c, 'size', 0.3, 3, 0.05, pct) : null,
+        isP ? K('size') : null,
         isP ? color('Color', c.color, (v) => { c.color = v; live(); }, done) : null,
         S('Fundido entrada/salida', c, 'fade', 0, 3, 0.05, secs),
         isP ? h('button', { class: 'btn block', style: 'margin-top:10px', onclick: () => { c.seed = Math.floor(Math.random() * 1000); live(); done(); } }, '🎲 Otra variación') : null,
         ...timing));
     } else if (c.type === 'audio') {
-      b.append(sec('aud', 'Audio', '🔊',
-        slider('Volumen', c.volume, 0, 2, 0.01, (v) => { c.volume = v; }, () => { app.audioChanged(); done(); }, pct),
+      b.append(sec('vol', 'Volumen', '🔊',
+        K('volume', 'Volumen', audioChanged),
         slider('Fundido de entrada', c.afadeIn, 0, 8, 0.1, (v) => { c.afadeIn = v; }, () => { app.audioChanged(); done(); }, secs),
         slider('Fundido de salida', c.afadeOut, 0, 8, 0.1, (v) => { c.afadeOut = v; }, () => { app.audioChanged(); done(); }, secs),
-        multi ? null : slider('Velocidad', c.speed, 0.5, 2, 0.05, (v) => { const src = c.dur * c.speed; c.speed = v; c.dur = Math.max(0.1, src / v); if (m && m.duration) c.dur = Math.min(c.dur, (m.duration - c.in) / v); }, () => { bus.emit('change', { structural: true }); app.audioChanged(); done(); }, (v) => v.toFixed(2) + '×'),
         ...timing,
-        h('p', { class: 'hint' }, '💡 Arrastra los bordes del clip en la línea de tiempo para recortar la música.')));
+        h('p', { class: 'hint' }, '💡 Arrastra los bordes del clip en la línea de tiempo para recortarlo. Con ◆ puedes subir y bajar el volumen en distintos momentos.')));
+      b.append(sec('speed', 'Velocidad', '⏩', speedCtl(0.5, 2)));
     }
+  }
+
+  // Sección de keyframes: navegación entre rombos + todos los valores animables
+  kfSection(c, sec, K, app, solo) {
+    const nav = h('div', { class: 'kf-nav' });
+    const prev = h('button', { class: 'btn', 'aria-label': 'Keyframe anterior' }, icon('prev', 22));
+    const next = h('button', { class: 'btn', 'aria-label': 'Keyframe siguiente' }, icon('next', 22));
+    const lab = h('b');
+    nav.append(prev, lab, next);
+    const big = h('button', { class: 'btn kf-big' });
+    const sync = () => {
+      const lt = state.time - c.start;
+      const ts = kfTimes(c);
+      const inClip = lt >= -1e-3 && lt <= c.dur + 1e-3;
+      const on = inClip && anyKfAt(c, lt);
+      lab.textContent = !inClip ? 'El cabezal está fuera del clip' : ts.length ? `${ts.length} keyframe${ts.length > 1 ? 's' : ''} · ${on ? 'en este punto' : fmtTime(Math.max(0, lt))}` : 'Sin keyframes todavía';
+      big.textContent = on ? '◆ Quitar keyframe de aquí' : '◆ Añadir keyframe aquí';
+      big.classList.toggle('on', on);
+      prev.disabled = !ts.some((t) => t < lt - 0.04);
+      next.disabled = !ts.some((t) => t > lt + 0.04);
+    };
+    prev.onclick = () => { const lt = state.time - c.start; const t = kfTimes(c).filter((x) => x < lt - 0.04).pop(); if (t != null) app.seek(c.start + t); };
+    next.onclick = () => { const lt = state.time - c.start; const t = kfTimes(c).find((x) => x > lt + 0.04); if (t != null) app.seek(c.start + t); };
+    big.onclick = () => {
+      const lt = state.time - c.start;
+      if (lt < -1e-3 || lt > c.dur + 1e-3) { toast('Pon el cabezal dentro del clip'); return; }
+      toggleAllKf(c, clamp(lt, 0, c.dur));
+      app.changed(); app.audioChanged(); commit(); bus.emit('kf');
+    };
+    sync();
+    this.refreshers.push(sync);
+    const ease = toggle('Movimiento suave entre keyframes', c.kfEase !== 'linear', (v) => { c.kfEase = v ? 'smooth' : 'linear'; app.changed(); app.audioChanged(); commit(); });
+    const clearAll = h('button', { class: 'btn danger block', style: 'margin-top:12px', onclick: () => {
+      if (!anyKf(c)) return;
+      const lt = clamp(state.time - c.start, 0, c.dur);
+      for (const p in c.kf) { const v = valueAt(c, p, lt); delete c.kf[p]; const parts = p.split('.'); let o = c; for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]]; o[parts[parts.length - 1]] = v; }
+      app.changed(); app.audioChanged(); commit(); bus.emit('kf'); this.render();
+    } }, 'Borrar todos los keyframes de este clip');
+    const props = propsFor(c).filter((p) => !(p[0] === 'volume' && c.type === 'video' && c.muted));
+    const kids = [
+      h('p', { class: 'hint' }, 'Mueve el cabezal a un momento, pulsa ◆ y cambia los valores. Repite en otro momento: el clip se animará solo entre un keyframe y otro.'),
+      nav, big,
+      ...props.map((p) => K(p[0], p[1], p[0] === 'volume' ? () => app.audioChanged() : null)),
+      ease, clearAll,
+    ];
+    if (solo) return sec('kf', 'Keyframes', '◆', ...kids);
+    return section('Keyframes', '◆', anyKf(c), ...kids);
   }
 
   maxDur(c) {
@@ -334,9 +573,13 @@ export class Panels {
   }
 
   projectFields(b) {
-    b.append(h('div', { class: 'sec', style: 'padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:#fff' },
-      h('b', { style: 'font-family:var(--serif);font-size:18px' }, '⚙️ Proyecto'),
-      color('Color de fondo del vídeo', state.project.bg, (v) => { state.project.bg = v; this.app.changed(); }, () => commit()),
-      h('button', { class: 'btn block', onclick: () => this.app.openProject() }, '📐 Formato y nombre')));
+    b.append(color('Color de fondo del vídeo', state.project.bg, (v) => { state.project.bg = v; this.app.changed(); }, () => commit()));
+    b.append(h('p', { class: 'hint' }, 'Se ve donde la imagen no llena todo el formato (por ejemplo con «Ajustar» en vez de «Llenar»).'));
+    const sw = h('div', { class: 'grid', style: 'grid-template-columns:repeat(6,1fr);gap:8px' });
+    for (const col of ['#000000', '#ffffff', '#1f2a44', '#3b2a4f', '#f3e7cf', '#0f3d3a']) {
+      sw.append(h('button', { class: 'card', style: `min-height:48px;background:${col}`, 'aria-label': col, onclick: () => { state.project.bg = col; this.app.changed(); commit(); this.render(); } }));
+    }
+    b.append(sw);
+    b.append(h('button', { class: 'btn block', style: 'margin-top:14px', onclick: () => this.app.openProject() }, '📐 Formato y nombre del proyecto'));
   }
 }

@@ -2,6 +2,7 @@
 import { state, bus, LANES, LANE_NAMES, select, toggleSel, selectIds, commit, projectDuration } from './state.js';
 import { h, fmtTime } from './ui.js';
 import { PARTICLES, POSTFX } from './presets.js';
+import { kfTimes } from './kf.js';
 
 const LABEL_W = 78;
 const ROW_H = { overlay: 58, video: 64, text: 46, fx: 46, audio: 54 };
@@ -20,7 +21,8 @@ export class Timeline {
     this.app = app;
     this.pps = 70;
     this.clipEls = new Map();
-    bus.on('change', (e) => { if (e && e.structural) this.render(); });
+    bus.on('change', (e) => { if (e && e.structural) this.render(); else this.updateKf(); });
+    bus.on('kf', () => this.updateKf());
     bus.on('select', () => this.updateSel());
     bus.on('selectmode', () => { this.scroll.classList.toggle('selmode', state.selectMode); });
     this.bindBand();
@@ -131,6 +133,21 @@ export class Timeline {
   place(el, c) {
     el.style.left = this.x(c.start) + 'px';
     el.style.width = Math.max(14, c.dur * this.pps) + 'px';
+    this.drawKf(el, c);
+  }
+
+  // rombos de keyframes sobre el clip (tocar uno = ir a ese instante)
+  drawKf(el, c) {
+    el.querySelectorAll('.kfm').forEach((d) => d.remove());
+    for (const t of kfTimes(c)) {
+      if (t < -1e-3 || t > c.dur + 1e-3) continue;
+      const d = h('i', { class: 'kfm', style: `left:${t * this.pps}px` });
+      d.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); if (!state.sel.has(c.id)) select(c.id); this.app.seek(c.start + t); });
+      el.append(d);
+    }
+  }
+  updateKf() {
+    for (const [id, el] of this.clipEls) { const c = state.project.clips.find((k) => k.id === id); if (c) this.drawKf(el, c); }
   }
 
   drawWave(cv, c) {
@@ -262,7 +279,7 @@ export class Timeline {
       this.app.showInspector && this.app.showInspector();
       const x0 = e.clientX;
       const group = mode === 'move' ? [...state.sel].map((id) => state.project.clips.find((k) => k.id === id)).filter(Boolean) : [c];
-      const origin = new Map(group.map((k) => [k.id, { start: k.start, dur: k.dur, in: k.in || 0 }]));
+      const origin = new Map(group.map((k) => [k.id, { start: k.start, dur: k.dur, in: k.in || 0, kf: k.kf ? structuredClone(k.kf) : null }]));
       const o = origin.get(c.id);
       const minStart = Math.min(...group.map((k) => origin.get(k.id).start));
       const m = c.media ? state.media.get(c.media) : null;
@@ -294,6 +311,7 @@ export class Timeline {
           c.start = o.start + dd;
           c.dur = o.dur - dd;
           if ('in' in c) c.in = Math.max(0, o.in + dd * sp);
+          if (o.kf) { c.kf = structuredClone(o.kf); for (const p in c.kf) for (const k of c.kf[p]) k.t -= dd; }
           this.place(el, c);
         } else {
           let ne = snap(o.start + o.dur + d);

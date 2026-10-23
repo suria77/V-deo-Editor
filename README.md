@@ -22,3 +22,6 @@ Es un sitio estático: no hay que compilar nada. Se publica en Cloudflare Pages 
 - **Selección múltiple**: botón «Seleccionar» en la línea de tiempo (tocar clips, recuadro arrastrando, «Todo», «Desde el cabezal», «Toda la pista»). Mover, duplicar, dividir, borrar y editar ajustes de varios clips a la vez.
 - **Luces y estrellas** (Efectos): Brillo radiante, Constelación, Luces de invierno, Estelar, Reflector celestial y Fragmentos de estrella.
 - **Subtítulos automáticos** (pestaña Texto): reconocimiento de voz Whisper en el propio navegador (transformers.js desde jsDelivr; la primera vez descarga el modelo), palabras resaltadas tipo karaoke, editor de revisión, importar/guardar .srt.
+- **Interfaz gris tipo CapCut/DaVinci**: herramientas en la barra inferior; al tocar un clip, la barra cambia a sus herramientas (Dividir, Velocidad, Volumen, Keyframes, Posición, Opacidad, Filtros, Ajustar…). En iPad vertical el panel sale como hoja desde abajo.
+- **Keyframes** (◆): opacidad, escala, posición, rotación, volumen (vídeo y audio), tamaño de texto, intensidad de efectos. Rombos en la línea de tiempo, navegación entre keyframes y movimiento suave.
+- **Audio en iPad**: el sonido ya no se apaga con el interruptor de silencio; si el navegador no puede separar el audio de un vídeo, suena directamente desde el vídeo.

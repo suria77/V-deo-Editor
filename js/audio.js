@@ -1,3 +1,4 @@
+import { gainAt, hasKf } from './kf.js';
 // Motor de audio: decodifica el audio de vídeos/audios y programa la reproducción mezclada.
 export class AudioEngine {
   constructor() {
@@ -6,8 +7,10 @@ export class AudioEngine {
   }
 
   init() {
+    // iPad/iPhone: sin esto el interruptor de silencio apaga todo el sonido de la web
+    try { if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch (e) { /* */ }
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+      if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
       return this.ctx;
     }
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -23,10 +26,30 @@ export class AudioEngine {
     return this.ctx;
   }
 
+  // Desbloqueo para Safari: hay que «tocar» el audio dentro de un gesto del usuario
+  unlock() {
+    const ctx = this.init();
+    if (!ctx) return;
+    try {
+      const b = ctx.createBuffer(1, 1, 22050);
+      const s = ctx.createBufferSource();
+      s.buffer = b; s.connect(ctx.destination); s.start(0);
+    } catch (e) { /* */ }
+    if (!this._tag) {
+      // un <audio> silencioso cambia la sesión de iOS a «reproducción» (suena aunque esté en silencio)
+      const wav = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA=';
+      this._tag = new Audio(wav);
+      this._tag.setAttribute('playsinline', '');
+      this._tag.loop = false;
+    }
+    this._tag.play().catch(() => {});
+    this.unlocked = ctx.state === 'running';
+  }
+
   async decode(media) {
     const ctx = this.init();
     if (!ctx || media.kind === 'image') return null;
-    if (media.blob.size > 400 * 1024 * 1024) return null;
+    if (media.blob.size > 450 * 1024 * 1024) { media.audioFallback = media.kind === 'video'; return null; }
     try {
       const ab = await media.blob.arrayBuffer();
       const buf = await ctx.decodeAudioData(ab);
@@ -46,6 +69,8 @@ export class AudioEngine {
       return buf;
     } catch (e) {
       media.buffer = null;
+      // si el navegador no sabe separar el sonido, el vídeo sonará directamente (sin mezclar)
+      media.audioFallback = media.kind === 'video';
       return null;
     }
   }
@@ -87,17 +112,13 @@ export class AudioEngine {
       src.buffer = m.buffer;
       src.playbackRate.value = c.speed;
       const gain = ctx.createGain();
-      const vol = c.volume;
-      const fi = c.afadeIn || 0, fo = c.afadeOut || 0;
-      if (fi > 0 && off < fi) {
-        gain.gain.setValueAtTime(vol * (off / fi), when);
-        gain.gain.linearRampToValueAtTime(vol, when + (fi - off));
-      } else gain.gain.setValueAtTime(vol, when);
-      if (fo > 0) {
-        const tStart = when + Math.max(0, D - fo);
-        gain.gain.setValueAtTime(vol, Math.max(when, tStart));
-        gain.gain.linearRampToValueAtTime(0, when + D);
-      }
+      if (hasKf(c, 'volume') || c.afadeIn > 0 || c.afadeOut > 0) {
+        // curva de volumen (keyframes + fundidos) muestreada a 25 por segundo
+        const step = 0.04;
+        gain.gain.setValueAtTime(gainAt(c, off), when);
+        for (let lt = off + step; lt < c.dur; lt += step) gain.gain.linearRampToValueAtTime(gainAt(c, lt), when + (lt - off));
+        gain.gain.linearRampToValueAtTime(gainAt(c, c.dur), when + D);
+      } else gain.gain.setValueAtTime(c.volume, when);
       src.connect(gain); gain.connect(dest);
       src.start(when, srcOff, Math.min(D * c.speed, m.buffer.duration - srcOff));
       if (list) list.push({ src, gain });

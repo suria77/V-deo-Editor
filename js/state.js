@@ -1,5 +1,6 @@
 // Estado del proyecto, historial (deshacer/rehacer) y utilidades de clips.
 import { ADJ_DEFAULT, PARTICLES, POSTFX } from './presets.js';
+import { splitKf } from './kf.js';
 
 let _uid = 0;
 export const uid = (p = 'c') => p + Date.now().toString(36) + (_uid++).toString(36) + Math.floor(Math.random() * 1e4).toString(36);
@@ -133,7 +134,7 @@ export function makeAudioClip(media, start) {
 export function makeTextClip(start, preset = {}) {
   return {
     id: uid(), type: 'text', lane: 'text', start, dur: 3,
-    text: 'Tu texto aquí', font: 'Montserrat', weight: 900, italic: false, size: 0.07, upper: false,
+    text: 'Tu texto aquí', opacity: 1, font: 'Montserrat', weight: 900, italic: false, size: 0.07, upper: false,
     color: '#ffffff', color2: '', stroke: { w: 0, color: '#000000' },
     shadow: { blur: 0.4, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 },
     x: 0, y: 0, align: 'center', spacing: 0, lineHeight: 1.15, width: 0.88, rot: 0,
@@ -208,6 +209,7 @@ export function splitClips(ids, t) {
     if (n.afadeIn) n.afadeIn = 0;
     if (c.afadeOut) c.afadeOut = 0;
     if (c.words) { splitWords(c, n, left); }
+    if (c.kf) splitKf(c, n, left);
     state.project.clips.push(n);
     out.push(n.id);
   }
@@ -257,6 +259,7 @@ export function splitClip(id, t) {
   if (c.transOut) c.transOut = { type: 'none', dur: 0.5 };
   if (n.afadeIn) n.afadeIn = 0;
   if (c.afadeOut) c.afadeOut = 0;
+  if (c.kf) splitKf(c, n, left);
   state.project.clips.push(n);
   state.selection = n.id;
   bus.emit('select');

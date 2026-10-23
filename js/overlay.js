@@ -1,6 +1,7 @@
 // Capa 2D: partículas (sin estado, deterministas → perfectas al saltar por la línea de tiempo) y texto animado.
 import { PARTICLES } from './presets.js';
 import { bus } from './state.js';
+import { animClip } from './kf.js';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const ease = (x) => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
@@ -558,7 +559,7 @@ export function drawText(ctx, c, lt, W, H) {
   const pIn = inA.type === 'none' ? 1 : clamp(lt / Math.max(0.05, inA.dur), 0, 1);
   const qOut = outA.type === 'none' ? 1 : clamp((c.dur - lt) / Math.max(0.05, outA.dur), 0, 1);
   const eI = ease(pIn), eO = ease(qOut);
-  let alpha = 1, dx = 0, dy = 0, scale = 1, glowMul = 1;
+  let alpha = c.opacity ?? 1, dx = 0, dy = 0, scale = 1, glowMul = 1;
   switch (inA.type) {
     case 'fade': alpha *= eI; break;
     case 'slideUp': alpha *= eI; dy += (1 - eI) * 0.07 * H; break;
@@ -662,7 +663,7 @@ export class Overlay {
   }
   draw(project, t, W, H) {
     this.ensure(W, H);
-    const act = project.clips.filter((c) => (c.type === 'fx' || c.type === 'text') && t >= c.start - 1e-6 && t < c.start + c.dur);
+    const act = project.clips.filter((c) => (c.type === 'fx' || c.type === 'text') && t >= c.start - 1e-6 && t < c.start + c.dur).map((c) => animClip(c, t - c.start));
     const post = postParams(act, t);
     let usedN = false, usedA = false, usedT = false;
     const parts = act.filter((c) => c.type === 'fx' && c.kind === 'particles').sort((a, b) => a.start - b.start);

@@ -14,6 +14,7 @@ import { saveProject, loadSaved, clearSaved } from './storage.js';
 import { ASPECTS } from './presets.js';
 import { h, fmtTime, toast, openModal, closeModal } from './ui.js';
 import { openSubtitles, openSubEditor, subClips } from './subs.js';
+import { valueAt, setValue, gainAt, toggleAllKf, anyKfAt } from './kf.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('cv');
@@ -78,18 +79,30 @@ function cleanupVideos() {
   }
 }
 
+// Vídeos cuyo sonido no se pudo extraer: suenan por el propio elemento <video>
+function elementAudio(c, v, active, t) {
+  const m = state.media.get(c.media);
+  const want = !!(m && m.audioFallback && !m.buffer && !c.muted && active && state.playing);
+  if (want) {
+    const vol = Math.max(0, Math.min(1, gainAt(c, t - c.start)));
+    if (v.muted) v.muted = false;
+    if (Math.abs(v.volume - vol) > 0.01) v.volume = vol;
+  } else if (!v.muted) v.muted = true;
+}
+
 function syncVideos(t) {
   for (const c of state.project.clips) {
     if (c.type !== 'video') continue;
     const v = videoFor(c);
     if (!v) continue;
     const active = t >= c.start && t < c.start + c.dur;
+    elementAudio(c, v, active, t);
     const target = c.in + (t - c.start) * c.speed;
     if (active) {
       const rate = Math.min(4, Math.max(0.25, c.speed));
       if (v.playbackRate !== rate) v.playbackRate = rate;
       if (state.playing) {
-        if (v.paused) { if (Math.abs(v.currentTime - target) > 0.05) v.currentTime = target; v.play().catch(() => {}); }
+        if (v.paused) { if (Math.abs(v.currentTime - target) > 0.05) v.currentTime = target; v.play().catch(() => { if (!v.muted) { v.muted = true; v.play().catch(() => {}); } }); }
         else if (Math.abs(v.currentTime - target) > 0.3) v.currentTime = target;
       } else {
         if (!v.paused) v.pause();
@@ -130,6 +143,11 @@ function loop(now) {
 }
 requestAnimationFrame(loop);
 
+// Primer toque en cualquier sitio: desbloquea el audio (Safari)
+const unlockOnce = () => { audio.unlock(); if (audio.unlocked) { window.removeEventListener('pointerdown', unlockOnce, true); window.removeEventListener('touchend', unlockOnce, true); } };
+window.addEventListener('pointerdown', unlockOnce, true);
+window.addEventListener('touchend', unlockOnce, true);
+
 // ---------- reproducción ----------
 let wakeLock = null;
 async function keepAwake(on) {
@@ -144,7 +162,15 @@ function play(from = state.time, stopAt = null) {
   if (dur <= 0) { toast('Añade primero algún vídeo, foto, texto o efecto'); return; }
   if (from >= dur - 0.05) from = 0;
   previewStop = stopAt;
-  audio.init();
+  audio.unlock();
+  // bendice los vídeos que suenan por sí mismos (Safari exige un toque para reproducir con sonido)
+  for (const c of state.project.clips) {
+    if (c.type !== 'video') continue;
+    const m = state.media.get(c.media);
+    if (!m || !m.audioFallback || c.muted) continue;
+    const v = videoFor(c);
+    if (v && v.paused && !(from >= c.start && from < c.start + c.dur)) { v.muted = false; v.play().then(() => { if (!(state.time >= c.start && state.time < c.start + c.dur)) v.pause(); }).catch(() => {}); }
+  }
   state.time = from;
   playFrom = from;
   state.playing = true;
@@ -173,7 +199,13 @@ function seek(t, keepPlaying = false) {
 }
 
 // ---------- importación ----------
-function pickFiles() { $('fileIn').click(); }
+let importLane = null;
+function pickFiles(opts = {}) {
+  const fi = $('fileIn');
+  importLane = opts.lane || null;
+  fi.accept = opts.accept || 'video/*,image/*,audio/*';
+  fi.click();
+}
 $('fileIn').addEventListener('change', async (e) => {
   const files = [...e.target.files];
   e.target.value = '';
@@ -232,11 +264,12 @@ async function importFiles(files, addToTimeline) {
     try {
       const m = await createMedia(f);
       ok++;
-      if (addToTimeline) addMediaToTimeline(m, true);
+      if (addToTimeline) addMediaToTimeline(m, true, m.kind !== 'audio' ? importLane : null);
     } catch (err) {
       toast('No se pudo abrir ' + f.name + ': ' + err.message, 5000);
     }
   }
+  importLane = null;
   bus.emit('media');
   if (ok) toast(ok === 1 ? 'Añadido ✓' : `${ok} archivos añadidos ✓`);
   updateEmpty();
@@ -248,9 +281,10 @@ function laneEnd(lane) {
   return e;
 }
 
-function addMediaToTimeline(m, quiet) {
+function addMediaToTimeline(m, quiet, lane) {
   let c;
-  if (m.kind === 'audio') c = makeAudioClip(m, quiet ? 0 : state.time);
+  if (m.kind === 'audio') c = makeAudioClip(m, quiet && !state.project.clips.length ? 0 : state.time);
+  else if (lane === 'overlay') { c = makeVisualClip(m, state.time, 'overlay'); c.tf.scale = 0.6; }
   else c = makeVisualClip(m, laneEnd('video'), 'video');
   addClip(c);
   select(c.id);
@@ -363,7 +397,11 @@ canvas.addEventListener('pointerdown', (e) => {
   const r = canvas.getBoundingClientRect();
   // todos los clips visuales/texto seleccionados se mueven juntos
   const items = (state.sel.has(c.id) ? selectedClips() : [c]).filter((k) => k.type === 'video' || k.type === 'image' || k.type === 'text');
-  const snapItems = () => items.map((k) => (k.type === 'text' ? { k, x0: k.x, y0: k.y, s0: k.size } : { k, x0: k.tf.x, y0: k.tf.y, s0: k.tf.scale }));
+  const lt = (k) => Math.max(0, Math.min(k.dur, state.time - k.start));
+  const snapItems = () => items.map((k) => {
+    const P = k.type === 'text' ? ['x', 'y', 'size'] : ['tf.x', 'tf.y', 'tf.scale'];
+    return { k, P, x0: valueAt(k, P[0], lt(k)), y0: valueAt(k, P[1], lt(k)), s0: valueAt(k, P[2], lt(k)), lt: lt(k) };
+  });
   gesture = { r, items: snapItems(), snapItems, p0: { x: e.clientX, y: e.clientY }, d0: null, moved: false };
 });
 canvas.addEventListener('pointermove', (e) => {
@@ -376,15 +414,16 @@ canvas.addEventListener('pointermove', (e) => {
     if (!g.d0) { g.d0 = d; g.items = g.snapItems(); return; }
     const k = d / g.d0;
     for (const it of g.items) {
-      if (it.k.type === 'text') it.k.size = Math.max(0.015, Math.min(0.4, it.s0 * k));
-      else it.k.tf.scale = Math.max(0.05, Math.min(6, it.s0 * k));
+      if (it.k.type === 'text') setValue(it.k, 'size', it.lt, Math.max(0.015, Math.min(0.4, it.s0 * k)));
+      else setValue(it.k, 'tf.scale', it.lt, Math.max(0.05, Math.min(6, it.s0 * k)));
     }
   } else {
     const dx = (e.clientX - g.p0.x) / g.r.width, dy = (e.clientY - g.p0.y) / g.r.height;
     if (Math.abs(dx) + Math.abs(dy) < 0.004 && !g.moved) return;
     g.moved = true;
     for (const it of g.items) {
-      if (it.k.type === 'text') { it.k.x = it.x0 + dx * 2; it.k.y = it.y0 + dy * 2; } else { it.k.tf.x = it.x0 + dx; it.k.tf.y = it.y0 + dy; }
+      const m = it.k.type === 'text' ? 2 : 1;
+      setValue(it.k, it.P[0], it.lt, it.x0 + dx * m); setValue(it.k, it.P[1], it.lt, it.y0 + dy * m);
     }
   }
   dirty = true;
@@ -608,7 +647,7 @@ function updateUndo() {
 // ---------- app compartida con paneles/timeline ----------
 const app = {
   audio, pause, openSubtitles: () => openSubtitles(app), openSubEditor: () => openSubEditor(app), subCount: () => subClips().length,
-  seek, pickFiles, addMediaToTimeline: (m) => addMediaToTimeline(m), addText, addFx, recordVoice, openProject,
+  seek, pickFiles, addMediaToTimeline: (m, q, lane) => addMediaToTimeline(m, q, lane), addText, addFx, recordVoice, openProject,
   changed: () => { dirty = true; },
   audioChanged: () => { if (state.playing) audio.schedule(state.project, state.media, state.time); },
   preview: (from, len) => play(Math.max(0, from), from + len),
@@ -656,6 +695,21 @@ $('tSplit').onclick = () => {
   if (!ids.length || !splitClips(ids, state.time).length) toast('Coloca el cabezal dentro de un clip para dividirlo');
 };
 $('tDup').onclick = () => { const ids = targetIds(); if (ids.length) duplicateClips(ids); else toast('Selecciona un clip'); };
+$('tKf').onclick = () => {
+  const c = selectedClip();
+  if (!c) { toast('Toca primero un clip'); return; }
+  const lt = state.time - c.start;
+  if (lt < -1e-3 || lt > c.dur + 1e-3) { toast('Pon el cabezal dentro del clip'); return; }
+  const added = toggleAllKf(c, Math.max(0, Math.min(c.dur, lt)));
+  commit(); bus.emit('kf'); dirty = true; if (state.playing) audio.schedule(state.project, state.media, state.time);
+  toast(added ? '◆ Keyframe añadido: cambia ahora los valores' : 'Keyframe quitado');
+  refreshKfBtn();
+};
+function refreshKfBtn() {
+  const c = selectedClip();
+  $('tKf').classList.toggle('on', !!(c && anyKfAt(c, state.time - c.start)));
+}
+bus.on('time', refreshKfBtn); bus.on('select', refreshKfBtn); bus.on('kf', refreshKfBtn);
 $('tDel').onclick = () => { const ids = targetIds(); if (ids.length) removeClips(ids); else toast('Selecciona un clip'); };
 
 // ---- modo selección múltiple ----

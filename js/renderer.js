@@ -1,3 +1,4 @@
+import { animClip } from './kf.js';
 // Motor de composición WebGL2: capas de vídeo/imagen con color, chroma, máscaras, transiciones
 // + superposición 2D (texto y partículas) + post-proceso (glitch, VHS, etc.)
 import { FILTERS, ADJ_DEFAULT } from './presets.js';
@@ -414,6 +415,7 @@ export class Renderer {
   }
 
   drawLayer(c, lt, t, m, videoEl) {
+    c = animClip(c, lt);
     const gl = this.gl;
     const W = this.W, H = this.H;
     const sw = m.w || 1280, sh = m.h || 720;
