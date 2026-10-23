@@ -49,12 +49,78 @@ async function mixMono16k(app, ids) {
   return out;
 }
 
-// ------------------------------------------------------------------ Whisper
+// ------------------------------------------------------------------ utilidades
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const ISO = { spanish: 'es', english: 'en', catalan: 'ca', portuguese: 'pt', french: 'fr', italian: 'it', german: 'de' };
+const KEY_LS = 'atelier.elevenlabsKey';
+const getKey = () => { try { return localStorage.getItem(KEY_LS) || ''; } catch (e) { return ''; } };
+const saveKey = (k) => { try { if (k) localStorage.setItem(KEY_LS, k); else localStorage.removeItem(KEY_LS); } catch (e) { /* */ } };
+const yieldUI = () => new Promise((r) => setTimeout(r, 30));
+
+function cleanWords(out, total) {
+  out = out.filter((w) => w.t && !/^[\[(♪*].*[\])♪*]$/.test(w.t));
+  for (let i = 0; i < out.length; i++) {
+    const nx = out[i + 1];
+    if (out[i].e == null || out[i].e < out[i].s) out[i].e = Math.min(total, out[i].s + 0.4);
+    if (nx && out[i].e > nx.s) out[i].e = Math.max(out[i].s + 0.05, nx.s);
+    if (out[i].e - out[i].s > 2.5) out[i].e = out[i].s + 1.2;
+  }
+  return out;
+}
+
+// WAV 16 bits mono (para enviar a ElevenLabs)
+function toWav(samples, rate = 16000) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + samples.length * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true);
+  v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 32767, true);
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+// ------------------------------------------------------------------ Motor 1: ElevenLabs (máxima precisión)
+async function transcribeEleven(audio, lang, key, onProgress) {
+  const wav = toWav(audio);
+  const q = lang && lang !== 'auto' ? `?lang=${ISO[lang] || ''}` : '';
+  onProgress({ text: 'Enviando el audio a ElevenLabs…', pct: 0.2 });
+  let res = null, err = '';
+  // a) a través de la función de Cloudflare de la propia app; b) directo a ElevenLabs
+  try {
+    res = await fetch('/api/transcribe' + q, { method: 'POST', headers: { 'x-el-key': key, 'content-type': 'audio/wav' }, body: wav });
+    if (res.status === 404 || res.status === 405) res = null;
+  } catch (e) { res = null; }
+  if (!res) {
+    const fd = new FormData();
+    fd.append('model_id', 'scribe_v2');
+    fd.append('file', wav, 'audio.wav');
+    fd.append('timestamps_granularity', 'word');
+    fd.append('tag_audio_events', 'false');
+    if (ISO[lang]) fd.append('language_code', ISO[lang]);
+    res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': key }, body: fd });
+  }
+  onProgress({ text: 'ElevenLabs está escribiendo…', pct: 0.8 });
+  const txt = await res.text();
+  let data = null;
+  try { data = JSON.parse(txt); } catch (e) { /* */ }
+  if (!res.ok) {
+    const d = data && data.detail;
+    err = (d && (d.message || d.status)) || (typeof d === 'string' ? d : '') || txt.slice(0, 160);
+    if (res.status === 401) err = 'La clave de ElevenLabs no es válida o no tiene permiso de «Speech to Text».';
+    throw new Error(err || 'Error ' + res.status);
+  }
+  const words = (data.words || []).filter((w) => w.type === 'word').map((w) => ({ t: (w.text || '').trim(), s: w.start, e: w.end }));
+  return cleanWords(words, audio.length / 16000);
+}
+
+// ------------------------------------------------------------------ Motor 2: Whisper en el dispositivo
 let asr = null, asrKey = '';
 
 async function loadAsr(size, onProgress) {
   const T = await import(/* @vite-ignore */ TJS);
-  const gpu = !!(navigator.gpu);
+  // En iPad/iPhone se usa el procesador (más estable, menos memoria); en ordenador, la gráfica si existe
+  const gpu = !!navigator.gpu && !IS_IOS;
   const tries = [];
   const ids = [`onnx-community/whisper-${size}_timestamped`, `Xenova/whisper-${size}`];
   for (const id of ids) {
@@ -65,11 +131,19 @@ async function loadAsr(size, onProgress) {
   for (const t of tries) {
     const key = `${t.id}|${t.device}`;
     if (asr && asrKey === key) return asr;
+    const files = new Map();
     try {
-      onProgress({ status: 'load', text: `Preparando el modelo (${t.device === 'webgpu' ? 'gráficos' : 'procesador'})…` });
+      onProgress({ text: 'Preparando el reconocimiento de voz…', pct: 0.05 });
       const p = await T.pipeline('automatic-speech-recognition', t.id, {
         device: t.device, dtype: t.dtype,
-        progress_callback: (e) => { if (e && e.status === 'progress' && e.total) onProgress({ status: 'dl', pct: e.loaded / e.total, file: e.file }); },
+        progress_callback: (e) => {
+          if (!e || !e.file) return;
+          if (e.status === 'progress' && e.total) files.set(e.file, [e.loaded, e.total]);
+          if (e.status === 'done') { const f = files.get(e.file); if (f) files.set(e.file, [f[1], f[1]]); }
+          let l = 0, tt = 0;
+          for (const [a, b] of files.values()) { l += a; tt += b; }
+          if (tt > 0) onProgress({ text: `Descargando el modelo (solo la primera vez)… ${Math.round((l / tt) * 100)}%`, pct: 0.05 + 0.4 * (l / tt) });
+        },
       });
       asr = p; asrKey = key;
       return p;
@@ -78,30 +152,48 @@ async function loadAsr(size, onProgress) {
   throw lastErr || new Error('No se pudo cargar el modelo');
 }
 
-async function transcribe(pipe, audio, lang, onProgress) {
-  const total = audio.length / 16000;
-  const opts = { return_timestamps: 'word', chunk_length_s: 30, stride_length_s: 5, task: 'transcribe' };
-  if (lang && lang !== 'auto') opts.language = lang;
-  const nChunks = Math.max(1, Math.ceil(total / 20));
-  let done = 0;
-  opts.chunk_callback = () => { done++; onProgress({ status: 'run', pct: Math.min(0.97, done / nChunks) }); };
-  const res = await pipe(audio, opts);
+// corta el audio en trozos de ~25 s por los silencios (gasta mucha menos memoria)
+function splitAudio(audio, rate = 16000, len = 25) {
   const out = [];
-  for (const ch of res.chunks || []) {
-    const t = (ch.text || '').trim();
-    if (!t || /^[\[(♪*].*[\])♪*]$/.test(t)) continue;
-    let [s, e] = ch.timestamp || [];
-    if (s == null) continue;
-    if (e == null || e < s) e = Math.min(total, s + 0.4);
-    out.push({ t, s, e });
-  }
-  // Corrige solapes y duraciones imposibles
-  for (let i = 0; i < out.length; i++) {
-    const nx = out[i + 1];
-    if (nx && out[i].e > nx.s) out[i].e = Math.max(out[i].s + 0.05, nx.s);
-    if (out[i].e - out[i].s > 2.5) out[i].e = out[i].s + 1.2;
+  let s = 0;
+  const N = audio.length;
+  while (s < N) {
+    let e = Math.min(N, s + len * rate);
+    if (e < N) {
+      const from = e - 4 * rate, win = rate / 20;
+      let best = e, bestE = Infinity;
+      for (let p = from; p < e; p += win) {
+        let en = 0;
+        for (let k = p; k < p + win; k++) en += audio[k] * audio[k];
+        if (en < bestE) { bestE = en; best = p + win / 2; }
+      }
+      e = Math.floor(best);
+    }
+    out.push([s, e]);
+    s = e;
   }
   return out;
+}
+
+async function transcribeLocal(pipe, audio, lang, onProgress) {
+  const total = audio.length / 16000;
+  const parts = splitAudio(audio);
+  const words = [];
+  for (let i = 0; i < parts.length; i++) {
+    const [a, b] = parts[i];
+    onProgress({ text: `Escuchando y escribiendo… (${i + 1} de ${parts.length})`, pct: 0.5 + 0.48 * (i / parts.length) });
+    await yieldUI();
+    const opts = { return_timestamps: 'word', task: 'transcribe' };
+    if (lang && lang !== 'auto') opts.language = lang;
+    const res = await pipe(audio.subarray(a, b), opts);
+    const off = a / 16000;
+    for (const ch of res.chunks || []) {
+      const [s, e] = ch.timestamp || [];
+      if (s == null) continue;
+      words.push({ t: (ch.text || '').trim(), s: s + off, e: e == null ? null : e + off });
+    }
+  }
+  return cleanWords(words, total);
 }
 
 // ------------------------------------------------------------------ agrupar palabras en líneas
@@ -219,7 +311,7 @@ export async function openSubtitles(app) {
     openModal([h('h2', {}, '💬 Subtítulos automáticos'), h('p', { class: 'sub' }, 'No he podido leer el sonido de los vídeos que hay en la línea de tiempo. Puede que el vídeo no tenga audio o que esté en un formato que el navegador no sabe abrir. Prueba a exportarlo desde Fotos como MP4 o a grabar la voz con «Grabar voz».'), h('button', { class: 'btn block', onclick: closeModal }, 'Entendido')]);
     return;
   }
-  const cfg = { model: 'base', lang: 'spanish', style: 'kar', words: 4, pos: 0.55, replace: true };
+  const cfg = { engine: 'el', model: IS_IOS ? 'tiny' : 'base', lang: 'spanish', style: 'kar', words: 4, pos: 0.55, replace: true };
   const chosen = new Set(srcs.map((c) => c.id));
   const exist = subClips().length;
 
@@ -231,7 +323,7 @@ export async function openSubtitles(app) {
   };
   body.append(
     h('h2', {}, '💬 Subtítulos automáticos'),
-    h('p', { class: 'sub' }, 'La voz se convierte en texto en tu propio dispositivo (no se sube ningún vídeo). La primera vez descarga un modelo de reconocimiento.'),
+    h('p', { class: 'sub' }, 'Con ElevenLabs solo se envía el sonido (no el vídeo) y las palabras quedan sincronizadas al milisegundo. «En el dispositivo» es gratis pero menos preciso y más lento.'),
     h('h4', {}, 'Qué audio escuchar'),
   );
   const list = h('div', { class: 'src-list' });
@@ -244,7 +336,24 @@ export async function openSubtitles(app) {
   }
   body.append(list, h('p', { class: 'hint' }, 'Desmarca la música: así el reconocimiento acierta mucho más.'));
   body.append(h('h4', {}, 'Idioma hablado'), pill(LANGS, 'lang'));
-  body.append(h('h4', {}, 'Precisión'), pill(MODELS.map((m) => [m.id, m.n]), 'model'), h('p', { class: 'hint' }, 'Rápido ≈ tiny · Equilibrado ≈ base · Preciso ≈ small. Cuanto más preciso, más tarda.'));
+  // Motor
+  const keyIn = h('input', { type: 'text', placeholder: 'Pega aquí tu clave de ElevenLabs (sk_…)', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+  keyIn.value = getKey();
+  const elBox = h('div', {},
+    keyIn,
+    h('p', { class: 'hint', style: 'margin-top:8px' }, 'La clave se guarda solo en este dispositivo. La encuentras en elevenlabs.io → tu perfil → «API Keys» (con permiso de «Speech to Text»). Gasta minutos de transcripción de tu plan de ElevenLabs.'));
+  const localModels = MODELS.filter((m) => !(IS_IOS && m.id === 'small'));
+  const localBox = h('div', {},
+    pill(localModels.map((m) => [m.id, m.n]), 'model'),
+    h('p', { class: 'hint' }, IS_IOS ? 'En iPad usa «Rápido» o «Equilibrado»: los modelos grandes pueden llenar la memoria y cerrar la página. Es menos preciso que ElevenLabs.' : 'Rápido ≈ tiny · Equilibrado ≈ base · Preciso ≈ small. Es menos preciso que ElevenLabs.'));
+  const showEngine = () => { elBox.hidden = cfg.engine !== 'el'; localBox.hidden = cfg.engine !== 'local'; };
+  const engRow = h('div', { class: 'chips' });
+  [['el', '🎯 ElevenLabs (máxima precisión)'], ['local', '📱 En el dispositivo (gratis)']].forEach(([v, lab]) => {
+    engRow.append(h('button', { class: cfg.engine === v ? 'on' : '', onclick: (e) => { cfg.engine = v; [...engRow.children].forEach((b) => b.classList.remove('on')); e.currentTarget.classList.add('on'); showEngine(); } }, lab));
+  });
+  engRow.style.gridTemplateColumns = '1fr 1fr';
+  body.append(h('h4', {}, 'Cómo reconocer la voz'), engRow, elBox, localBox);
+  showEngine();
   body.append(h('h4', {}, 'Estilo'), pill(SUB_STYLES.map((s) => [s.id, s.n]), 'style'));
   body.append(h('h4', {}, 'Palabras por línea'), pill([[2, '2'], [3, '3'], [4, '4'], [6, '6']], 'words'));
   body.append(h('h4', {}, 'Posición'), pill([[0.55, 'Abajo'], [0, 'Centro'], [-0.5, 'Arriba']], 'pos'));
@@ -264,14 +373,20 @@ export async function openSubtitles(app) {
     const set = (t, p) => { msg.textContent = t; fill.style.width = Math.round((p ?? 0) * 100) + '%'; };
     try {
       app.pause && app.pause();
+      if (cfg.engine === 'el') {
+        const k = keyIn.value.trim();
+        if (!k) { set('Pega primero tu clave de ElevenLabs (o elige «En el dispositivo»).', 0); go.disabled = false; cancel.hidden = false; return; }
+        saveKey(k);
+      }
       set('Preparando el audio…', 0.02);
       const audio = await mixMono16k(app, chosen);
-      const pipe = await loadAsr(cfg.model, (e) => {
-        if (e.status === 'dl') set(`Descargando el modelo… ${Math.round(e.pct * 100)}%`, e.pct * 0.5);
-        else set(e.text || 'Cargando…', 0.5);
-      });
-      set('Escuchando y escribiendo…', 0.55);
-      const words = await transcribe(pipe, audio, cfg.lang, (e) => set('Escuchando y escribiendo…', 0.55 + e.pct * 0.43));
+      const prog = (e) => set(e.text, e.pct);
+      let words;
+      if (cfg.engine === 'el') words = await transcribeEleven(audio, cfg.lang, keyIn.value.trim(), prog);
+      else {
+        const pipe = await loadAsr(cfg.model, prog);
+        words = await transcribeLocal(pipe, audio, cfg.lang, prog);
+      }
       if (!words.length) { set('No se ha detectado voz.', 0); go.disabled = false; cancel.hidden = false; return; }
       const style = SUB_STYLES.find((s) => s.id === cfg.style);
       const lines = groupWords(words, { maxWords: cfg.words, maxChars: cfg.words * 7 });
@@ -281,7 +396,7 @@ export async function openSubtitles(app) {
       openSubEditor(app);
     } catch (err) {
       console.error(err);
-      set('No se pudo completar: ' + (err && err.message ? err.message : err) + '. Comprueba tu conexión (la primera vez descarga el modelo) y vuelve a intentarlo.', 0);
+      set('No se pudo completar: ' + (err && err.message ? err.message : err) + (cfg.engine === 'el' ? '' : '. Comprueba tu conexión (la primera vez descarga el modelo) y vuelve a intentarlo.'), 0);
       go.disabled = false; cancel.hidden = false;
     }
   };
