@@ -27,7 +27,11 @@ export const subClips = () => state.project.clips.filter(isSub).sort((a, b) => a
 
 // ------------------------------------------------------------------ audio
 function audioSources() {
-  return state.project.clips.filter((c) => c.type === 'audio' || c.type === 'video');
+  return state.project.clips.filter((c) => {
+    if (!c.media) return false;
+    const m = state.media.get(c.media);
+    return c.type === 'audio' || c.type === 'video' || (m && (m.kind === 'video' || m.kind === 'audio'));
+  });
 }
 
 async function mixMono16k(app, ids) {
@@ -200,7 +204,7 @@ export function retext(c, text) {
 export async function openSubtitles(app) {
   const all = audioSources().filter((c) => state.media.get(c.media));
   if (!all.length) {
-    openModal([h('h2', {}, '💬 Subtítulos automáticos'), h('p', { class: 'sub' }, 'Primero añade a la línea de tiempo un vídeo con voz o una locución. Los subtítulos se crean a partir de ese audio.'), h('button', { class: 'btn block', onclick: closeModal }, 'Entendido')]);
+    openModal([h('h2', {}, '💬 Subtítulos automáticos'), h('p', { class: 'sub' }, 'No hay ningún vídeo ni audio en la línea de tiempo. Añade un vídeo con voz o una locución y vuelve a intentarlo.'), h('button', { class: 'btn block', onclick: closeModal }, 'Entendido')]);
     return;
   }
   // si algún vídeo aún no tiene el sonido preparado, se intenta leer ahora
