@@ -66,10 +66,19 @@
       <button class="tbtn" id="tSplit"><i>✂</i><span>Dividir</span></button>
       <button class="tbtn" id="tDup"><i>⧉</i><span>Duplicar</span></button>
       <button class="tbtn danger" id="tDel"><i>🗑</i><span>Eliminar</span></button>
+      <button class="tbtn" id="tSel" aria-pressed="false"><i>☑</i><span>Seleccionar</span></button>
       <div class="spacer"></div>
       <button class="icon-btn sm" id="zOut" aria-label="Alejar">−</button>
       <input type="range" id="zoom" min="20" max="300" value="70" aria-label="Zoom de la línea de tiempo">
       <button class="icon-btn sm" id="zIn" aria-label="Acercar">+</button>
+    </div>
+    <div class="sel-bar" id="selBar" hidden>
+      <b id="selCount">0 clips</b>
+      <button class="pill" id="sAll">Todo</button>
+      <button class="pill" id="sFrom">Desde el cabezal →</button>
+      <button class="pill" id="sLane">Toda la pista</button>
+      <button class="pill" id="sNone">Ninguno</button>
+      <span class="sel-tip">Toca clips o arrastra un recuadro sobre ellos</span>
     </div>
     <div class="tl-scroll" id="tlScroll">
       <div class="tl-inner" id="tlInner"></div>

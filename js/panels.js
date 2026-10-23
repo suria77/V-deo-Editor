@@ -1,5 +1,5 @@
 // Paneles laterales: Medios, Texto, Efectos y Ajustes (inspector del clip seleccionado).
-import { state, bus, commit, selectedClip, removeClip, duplicateClip, splitClip } from './state.js';
+import { state, bus, commit, selectedClip, selectedClips, removeClips, duplicateClips, splitClips } from './state.js';
 import { h, slider, select, toggle, color, chips, section, fmtTime, toast } from './ui.js';
 import {
   ADJ_CONTROLS, ADJ_DEFAULT, FILTERS, MOTIONS, TRANSITIONS, BLENDS, MASKS, FONTS,
@@ -14,7 +14,11 @@ export class Panels {
     this.fxSeg = 'particles';
     this.openSecs = new Set(['pos', 'txt', 'fxp', 'aud']);
     document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.tab)));
-    bus.on('select', () => { if (state.selection) this.show('inspect'); else if (this.tab === 'inspect') this.render(); });
+    bus.on('select', () => {
+      if (state.selection && !state.selectMode) this.show('inspect');
+      else if (this.tab === 'inspect') this.render();
+    });
+    bus.on('selectmode', () => { if (this.tab === 'inspect') this.render(); });
     bus.on('change', (e) => { if (e && (e.structural || e.timing) && this.tab === 'inspect') this.render(); else if (e && e.structural && this.tab === 'media') this.render(); });
     bus.on('media', () => { if (this.tab === 'media') this.render(); });
     this.render();
@@ -84,11 +88,15 @@ export class Panels {
     b.append(h('p', { class: 'hint' }, isP
       ? 'Fuego, niebla, partículas y luz que se dibujan encima del vídeo. Se añaden donde está el cabezal; luego puedes alargarlos y ajustarlos.'
       : 'Efectos que transforman toda la imagen durante un tramo: glitch, VHS, temblor, flashes…'));
-    const g = h('div', { class: 'grid' });
-    for (const d of isP ? PARTICLES : POSTFX) {
-      g.append(h('button', { class: 'card', onclick: () => this.app.addFx(d.id, isP ? 'particles' : 'post') }, h('span', { class: 'em' }, d.i), d.n));
-    }
-    b.append(g);
+    const grid = (list) => {
+      const g = h('div', { class: 'grid' });
+      for (const d of list) g.append(h('button', { class: 'card', onclick: () => this.app.addFx(d.id, isP ? 'particles' : 'post') }, h('span', { class: 'em' }, d.i), d.n));
+      return g;
+    };
+    if (isP) {
+      b.append(h('h3', { class: 'sub-h' }, '✨ Luces y estrellas'), grid(PARTICLES.filter((d) => d.cat === 'luz')));
+      b.append(h('h3', { class: 'sub-h', style: 'margin-top:18px' }, '🌿 Ambiente'), grid(PARTICLES.filter((d) => d.cat !== 'luz')));
+    } else b.append(grid(POSTFX));
   }
 
   // ---------------- AJUSTES (inspector) ----------------
@@ -102,8 +110,42 @@ export class Panels {
       return;
     }
     const app = this.app;
-    const live = () => app.changed();
-    const done = () => commit();
+    // ----- edición en grupo: los cambios del clip principal se copian a los demás del mismo tipo -----
+    const sel = selectedClips();
+    const multi = sel.length > 1;
+    const kindOf = (k) => (k.type === 'image' ? 'video' : k.type);
+    const GROUPS = {
+      video: ['tf', 'crop', 'mask', 'adj', 'filter', 'filterAmt', 'chroma', 'blend', 'motion', 'transIn', 'transOut', 'volume', 'muted', 'afadeIn', 'afadeOut', 'lane'],
+      text: ['font', 'weight', 'italic', 'upper', 'size', 'color', 'color2', 'stroke', 'shadow', 'bg', 'spacing', 'lineHeight', 'width', 'align', 'rot', 'x', 'y', 'inAnim', 'outAnim', 'loop'],
+      fx: ['intensity', 'speed', 'size', 'color', 'fade'],
+      audio: ['volume', 'afadeIn', 'afadeOut'],
+    };
+    const pickGroups = (k) => { const o = {}; for (const g of GROUPS[kindOf(k)] || []) if (g in k) o[g] = structuredClone(k[g]); return o; };
+    const diffLeaves = (a, b, path = [], out = []) => {
+      for (const key of Object.keys(b)) {
+        const x = a ? a[key] : undefined, y = b[key];
+        if (y && typeof y === 'object' && !Array.isArray(y)) diffLeaves(x || {}, y, [...path, key], out);
+        else if (x !== y) out.push([[...path, key], y]);
+      }
+      return out;
+    };
+    const setPath = (k, path, val) => {
+      let o = k;
+      for (let i = 0; i < path.length - 1; i++) { if (!o || !(path[i] in o)) return; o = o[path[i]]; }
+      if (o && path[0] in k) o[path[path.length - 1]] = val;
+    };
+    const same = multi ? sel.filter((k) => k !== c && kindOf(k) === kindOf(c)) : [];
+    let snap = pickGroups(c);
+    const propagate = () => {
+      if (!same.length) return;
+      const cur = pickGroups(c);
+      const diffs = diffLeaves(snap, cur);
+      for (const k of same) for (const [path, val] of diffs) setPath(k, path, val);
+      snap = cur;
+    };
+    const live = () => { propagate(); app.changed(); };
+    const done = () => { propagate(); commit(); };
+    const ids = [...state.sel];
     const sec = (key, title, icon, ...kids) => {
       const d = section(title, icon, this.openSecs.has(key), ...kids);
       d.addEventListener('toggle', () => { if (d.open) this.openSecs.add(key); else this.openSecs.delete(key); });
@@ -123,14 +165,15 @@ export class Panels {
     if (m) title = m.name;
     if (c.type === 'fx') { const d = (c.kind === 'particles' ? PARTICLES : POSTFX).find((p) => p.id === c.fx); if (d) title = d.n; }
     if (c.type === 'text') title = c.text.split('\n')[0] || 'Texto';
-    b.append(h('div', { class: 'clip-head' }, h('span', { class: 'badge', style: `background:${c.lane === 'overlay' ? 'var(--clip-over)' : meta[1]}` }, meta[0]), h('b', {}, title)));
+    b.append(h('div', { class: 'clip-head' }, h('span', { class: 'badge', style: `background:${multi ? 'var(--plum)' : c.lane === 'overlay' ? 'var(--clip-over)' : meta[1]}` }, multi ? '☑' : meta[0]), h('b', {}, multi ? `${sel.length} clips seleccionados` : title)));
+    if (multi) b.append(h('p', { class: 'hint' }, same.length ? `Todo lo que cambies aquí se aplica a los ${same.length + 1} clips de tipo «${meta[2]}» (el que tocaste último es «${title}»). Los clips de otro tipo no cambian.` : `Los ${sel.length} clips seleccionados son de tipos distintos: aquí solo cambia el último que tocaste («${title}»).`));
     b.append(h('div', { class: 'mini-btns' },
-      h('button', { class: 'btn', onclick: () => { if (!splitClip(c.id, state.time)) toast('Coloca el cabezal dentro del clip para dividirlo'); } }, '✂ Dividir'),
-      h('button', { class: 'btn', onclick: () => duplicateClip(c.id) }, '⧉ Duplicar'),
-      h('button', { class: 'btn danger', onclick: () => removeClip(c.id) }, '🗑')));
+      h('button', { class: 'btn', onclick: () => { if (!splitClips(ids, state.time).length) toast('Coloca el cabezal dentro del clip para dividirlo'); } }, '✂ Dividir'),
+      h('button', { class: 'btn', onclick: () => duplicateClips(ids) }, '⧉ Duplicar'),
+      h('button', { class: 'btn danger', onclick: () => removeClips(ids) }, multi ? `🗑 ${sel.length}` : '🗑')));
 
     // tiempos
-    const timing = [
+    const timing = multi ? [] : [
       slider('Empieza en', c.start, 0, Math.max(60, c.start + 30), 0.1, (v) => { c.start = v; live(); }, () => { bus.emit('change', { structural: true }); done(); }, secs),
       slider('Duración', c.dur, 0.2, this.maxDur(c), 0.1, (v) => { c.dur = v; live(); }, () => { bus.emit('change', { structural: true }); done(); }, secs),
     ];
@@ -146,7 +189,7 @@ export class Panels {
         S('Rotación', tf, 'rot', -180, 180, 1, (v) => v + '°'),
         S('Opacidad', tf, 'opacity', 0, 1, 0.01, pct),
         h('div', { class: 'two' }, toggle('Espejo ↔', tf.flipX, (v) => { tf.flipX = v; live(); done(); }), toggle('Voltear ↕', tf.flipY, (v) => { tf.flipY = v; live(); done(); })),
-        select('Capa', [{ id: 'video', n: 'Vídeo principal' }, { id: 'overlay', n: 'Superpuesto (encima)' }], c.lane, (v) => { c.lane = v; bus.emit('change', { structural: true }); done(); }),
+        select('Capa', [{ id: 'video', n: 'Vídeo principal' }, { id: 'overlay', n: 'Superpuesto (encima)' }], c.lane, (v) => { c.lane = v; propagate(); bus.emit('change', { structural: true }); done(); }),
         ...timing,
         h('p', { class: 'hint' }, '💡 También puedes arrastrar la imagen con el dedo para moverla y pellizcar para cambiar el tamaño.')));
 
@@ -201,7 +244,7 @@ export class Panels {
 
       if (c.type === 'video') {
         b.append(sec('aud', 'Velocidad y sonido', '🔊',
-          slider('Velocidad', c.speed, 0.25, 4, 0.05, (v) => {
+          multi ? null : slider('Velocidad', c.speed, 0.25, 4, 0.05, (v) => {
             const src = c.dur * c.speed; c.speed = v; c.dur = Math.max(0.1, src / v);
             if (m && m.duration) c.dur = Math.min(c.dur, (m.duration - c.in) / v);
             live();
@@ -217,7 +260,7 @@ export class Panels {
       ta.addEventListener('input', () => { c.text = ta.value; live(); });
       ta.addEventListener('change', () => { bus.emit('change', { structural: true, keepPanel: true }); done(); });
       b.append(sec('txt', 'Texto', '✏️',
-        ta,
+        multi ? null : ta,
         h('div', { class: 'field' }, h('label', {}, 'Estilos rápidos')),
         h('div', { class: 'grid' }, ...TEXT_STYLES.map((s) => h('button', { class: 'card style-card', onclick: () => { Object.assign(c, structuredClone(s.p)); live(); done(); this.render(); } }, h('span', { style: s.css }, 'Aa'), h('small', {}, s.n)))),
         select('Tipo de letra', FONTS.map((f) => ({ id: f.f, n: f.n })), c.font, (v) => { c.font = v; live(); done(); }),
@@ -275,7 +318,7 @@ export class Panels {
         slider('Volumen', c.volume, 0, 2, 0.01, (v) => { c.volume = v; }, () => { app.audioChanged(); done(); }, pct),
         slider('Fundido de entrada', c.afadeIn, 0, 8, 0.1, (v) => { c.afadeIn = v; }, () => { app.audioChanged(); done(); }, secs),
         slider('Fundido de salida', c.afadeOut, 0, 8, 0.1, (v) => { c.afadeOut = v; }, () => { app.audioChanged(); done(); }, secs),
-        slider('Velocidad', c.speed, 0.5, 2, 0.05, (v) => { const src = c.dur * c.speed; c.speed = v; c.dur = Math.max(0.1, src / v); if (m && m.duration) c.dur = Math.min(c.dur, (m.duration - c.in) / v); }, () => { bus.emit('change', { structural: true }); app.audioChanged(); done(); }, (v) => v.toFixed(2) + '×'),
+        multi ? null : slider('Velocidad', c.speed, 0.5, 2, 0.05, (v) => { const src = c.dur * c.speed; c.speed = v; c.dur = Math.max(0.1, src / v); if (m && m.duration) c.dur = Math.min(c.dur, (m.duration - c.in) / v); }, () => { bus.emit('change', { structural: true }); app.audioChanged(); done(); }, (v) => v.toFixed(2) + '×'),
         ...timing,
         h('p', { class: 'hint' }, '💡 Arrastra los bordes del clip en la línea de tiempo para recortar la música.')));
     }

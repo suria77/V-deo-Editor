@@ -18,7 +18,9 @@ export const bus = new Emitter();
 export const state = {
   project: { name: 'Mi vídeo', aspect: '9:16', w: 1080, h: 1920, fps: 30, bg: '#000000', clips: [] },
   media: new Map(), // id -> {id,name,kind,blob,url,w,h,duration,el,buffer,thumb,peaks}
-  selection: null,
+  selection: null, // clip principal (el último tocado)
+  sel: new Set(), // todos los clips seleccionados
+  selectMode: false,
   time: 0,
   playing: false,
 };
@@ -62,7 +64,8 @@ export function redo() {
 export const canUndo = () => undoStack.length > 0;
 export const canRedo = () => redoStack.length > 0;
 function fixSelection() {
-  if (state.selection && !getClip(state.selection)) state.selection = null;
+  for (const id of [...state.sel]) if (!getClip(id)) state.sel.delete(id);
+  if (state.selection && !getClip(state.selection)) state.selection = [...state.sel].pop() || null;
   bus.emit('select');
 }
 
@@ -72,7 +75,28 @@ export const selectedClip = () => (state.selection ? getClip(state.selection) : 
 
 export function select(id) {
   state.selection = id;
+  state.sel = id ? new Set([id]) : new Set();
   bus.emit('select');
+}
+export function toggleSel(id) {
+  if (state.sel.has(id)) {
+    state.sel.delete(id);
+    if (state.selection === id) state.selection = [...state.sel].pop() || null;
+  } else {
+    state.sel.add(id);
+    state.selection = id;
+  }
+  bus.emit('select');
+}
+export function selectIds(ids) {
+  state.sel = new Set(ids);
+  state.selection = ids.length ? ids[ids.length - 1] : null;
+  bus.emit('select');
+}
+export const selectedClips = () => state.project.clips.filter((c) => state.sel.has(c.id));
+export function setSelectMode(on) {
+  state.selectMode = !!on;
+  bus.emit('selectmode');
 }
 
 export function projectDuration() {
@@ -138,10 +162,71 @@ export function removeClip(id) {
   const i = state.project.clips.findIndex((c) => c.id === id);
   if (i < 0) return;
   state.project.clips.splice(i, 1);
-  if (state.selection === id) state.selection = null;
+  state.sel.delete(id);
+  if (state.selection === id) state.selection = [...state.sel].pop() || null;
   bus.emit('select');
   bus.emit('change', { structural: true });
   commit();
+}
+
+export function removeClips(ids) {
+  const set = new Set(ids);
+  state.project.clips = state.project.clips.filter((c) => !set.has(c.id));
+  for (const id of set) state.sel.delete(id);
+  state.selection = [...state.sel].pop() || null;
+  bus.emit('select');
+  bus.emit('change', { structural: true });
+  commit();
+}
+
+// Duplica un grupo conservando las distancias entre clips; la copia va justo después del grupo
+export function duplicateClips(ids) {
+  const cs = state.project.clips.filter((c) => ids.includes(c.id));
+  if (!cs.length) return [];
+  const t0 = Math.min(...cs.map((c) => c.start));
+  const t1 = Math.max(...cs.map((c) => c.start + c.dur));
+  const out = cs.map((c) => { const n = structuredClone(c); n.id = uid(); n.start = c.start - t0 + t1; return n; });
+  state.project.clips.push(...out);
+  selectIds(out.map((c) => c.id));
+  bus.emit('change', { structural: true });
+  commit();
+  return out;
+}
+
+export function splitClips(ids, t) {
+  const out = [];
+  for (const id of ids) {
+    const c = getClip(id);
+    if (!c || t <= c.start + 0.05 || t >= c.start + c.dur - 0.05) continue;
+    const n = structuredClone(c);
+    n.id = uid();
+    const left = t - c.start;
+    n.start = t; n.dur = c.dur - left; c.dur = left;
+    if ('in' in c) n.in = c.in + left * (c.speed || 1);
+    if (n.transIn) n.transIn = { type: 'none', dur: 0.5 };
+    if (c.transOut) c.transOut = { type: 'none', dur: 0.5 };
+    if (n.afadeIn) n.afadeIn = 0;
+    if (c.afadeOut) c.afadeOut = 0;
+    if (c.words) { splitWords(c, n, left); }
+    state.project.clips.push(n);
+    out.push(n.id);
+  }
+  if (out.length) {
+    selectIds(out);
+    bus.emit('change', { structural: true });
+    commit();
+  }
+  return out;
+}
+
+function splitWords(a, b, left) {
+  const all = a.words;
+  a.words = all.filter((w) => w.s < left);
+  b.words = all.filter((w) => w.s >= left).map((w) => ({ ...w, s: w.s - left, e: w.e - left }));
+  const na = a.words.length;
+  const toks = a.text.split(/\s+/).filter(Boolean);
+  a.text = toks.slice(0, na).join(' ');
+  b.text = toks.slice(na).join(' ');
 }
 
 export function duplicateClip(id) {
@@ -191,6 +276,7 @@ export function setAspect(key, dims) {
 export function loadProject(p) {
   state.project = p;
   state.selection = null;
+  state.sel = new Set();
   state.time = 0;
   resetHistory();
   bus.emit('select');

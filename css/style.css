@@ -225,3 +225,19 @@ input[type=color] { width: 56px; height: 46px; border: 1px solid var(--line); bo
   :root { --tl-h: 220px; }
 }
 .canvas-wrap:fullscreen { background: #000; border-radius: 0; }
+
+/* ---------- selección múltiple ---------- */
+.tbtn.on { background: var(--plum); color: #fff; border-color: var(--plum); box-shadow: 0 3px 12px rgba(91, 42, 134, .4); }
+.sel-bar { display: flex; align-items: center; gap: 8px; padding: 6px 14px; background: #f1e6ff; border-bottom: 1px solid #d9c6f3; flex-wrap: wrap; }
+.sel-bar[hidden] { display: none; }
+.sel-bar b { color: var(--plum); margin-right: 4px; font-size: 15px; }
+.sel-tip { color: var(--ink2); font-size: 13px; margin-left: auto; }
+.pill { border: 1px solid #cfb8ee; background: #fff; border-radius: 999px; padding: 6px 14px; min-height: 40px; font-weight: 600; font-size: 14px; color: var(--plum); }
+.pill:active { transform: scale(.96); }
+.tl-scroll.selmode .lane .area { touch-action: none; cursor: crosshair; }
+.tl-scroll.selmode { box-shadow: inset 0 0 0 3px #cfb8ee; }
+.band { position: absolute; z-index: 9; border: 2px dashed var(--plum); background: rgba(122, 69, 173, .16); border-radius: 6px; pointer-events: none; }
+.clip.band-hit { outline: 3px solid var(--gold2); outline-offset: -1px; }
+.clip.prim { box-shadow: 0 0 0 3px var(--gold), 0 4px 14px rgba(200, 146, 26, .6); }
+.clip.sel::after { content: '✓'; position: absolute; right: 30px; top: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--plum); color: #fff; font-size: 12px; display: grid; place-items: center; z-index: 3; pointer-events: none; }
+@media (max-width: 700px) { .sel-tip { display: none; } }

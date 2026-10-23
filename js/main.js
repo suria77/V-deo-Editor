@@ -1,8 +1,8 @@
 // Arranque de la app: reproductor, importación, exportación, gestos sobre la imagen.
 import {
-  state, bus, commit, undo, redo, canUndo, canRedo, uid, select, selectedClip, getClip,
+  state, bus, commit, undo, redo, canUndo, canRedo, uid, select, selectedClip, selectedClips, selectIds, setSelectMode, getClip,
   projectDuration, makeVisualClip, makeAudioClip, makeTextClip, makeFxClip, addClip,
-  removeClip, duplicateClip, splitClip, setAspect, loadProject, resetHistory,
+  removeClip, removeClips, duplicateClips, splitClips, setAspect, loadProject, resetHistory,
 } from './state.js';
 import { Renderer } from './renderer.js';
 import { Overlay } from './overlay.js';
@@ -360,13 +360,10 @@ canvas.addEventListener('pointerdown', (e) => {
   }
   if (!c || !isVis(c)) { gesture = null; return; }
   const r = canvas.getBoundingClientRect();
-  const isText = c.type === 'text';
-  gesture = {
-    c, r, isText,
-    x0: isText ? c.x : c.tf.x, y0: isText ? c.y : c.tf.y,
-    s0: isText ? c.size : c.tf.scale,
-    p0: { x: e.clientX, y: e.clientY }, d0: null, moved: false,
-  };
+  // todos los clips visuales/texto seleccionados se mueven juntos
+  const items = (state.sel.has(c.id) ? selectedClips() : [c]).filter((k) => k.type === 'video' || k.type === 'image' || k.type === 'text');
+  const snapItems = () => items.map((k) => (k.type === 'text' ? { k, x0: k.x, y0: k.y, s0: k.size } : { k, x0: k.tf.x, y0: k.tf.y, s0: k.tf.scale }));
+  gesture = { r, items: snapItems(), snapItems, p0: { x: e.clientX, y: e.clientY }, d0: null, moved: false };
 });
 canvas.addEventListener('pointermove', (e) => {
   if (!pointers.has(e.pointerId) || !gesture) return;
@@ -375,14 +372,19 @@ canvas.addEventListener('pointermove', (e) => {
   const pts = [...pointers.values()];
   if (pts.length >= 2) {
     const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-    if (!g.d0) { g.d0 = d; g.s0 = g.isText ? g.c.size : g.c.tf.scale; return; }
+    if (!g.d0) { g.d0 = d; g.items = g.snapItems(); return; }
     const k = d / g.d0;
-    if (g.isText) g.c.size = Math.max(0.015, Math.min(0.4, g.s0 * k)); else g.c.tf.scale = Math.max(0.05, Math.min(6, g.s0 * k));
+    for (const it of g.items) {
+      if (it.k.type === 'text') it.k.size = Math.max(0.015, Math.min(0.4, it.s0 * k));
+      else it.k.tf.scale = Math.max(0.05, Math.min(6, it.s0 * k));
+    }
   } else {
     const dx = (e.clientX - g.p0.x) / g.r.width, dy = (e.clientY - g.p0.y) / g.r.height;
     if (Math.abs(dx) + Math.abs(dy) < 0.004 && !g.moved) return;
     g.moved = true;
-    if (g.isText) { g.c.x = g.x0 + dx * 2; g.c.y = g.y0 + dy * 2; } else { g.c.tf.x = g.x0 + dx; g.c.tf.y = g.y0 + dy; }
+    for (const it of g.items) {
+      if (it.k.type === 'text') { it.k.x = it.x0 + dx * 2; it.k.y = it.y0 + dy * 2; } else { it.k.tf.x = it.x0 + dx; it.k.tf.y = it.y0 + dy; }
+    }
   }
   dirty = true;
 });
@@ -392,7 +394,7 @@ const endPtr = (e) => {
     gesture = null;
     commit();
     bus.emit('change', { timing: true });
-  } else if (gesture) { gesture.d0 = null; const p = [...pointers.values()][0]; if (p) { gesture.p0 = p; gesture.x0 = gesture.isText ? gesture.c.x : gesture.c.tf.x; gesture.y0 = gesture.isText ? gesture.c.y : gesture.c.tf.y; } }
+  } else if (gesture) { gesture.d0 = null; const p = [...pointers.values()][0]; if (p) { gesture.p0 = p; gesture.items = gesture.snapItems(); } }
 };
 canvas.addEventListener('pointerup', endPtr);
 canvas.addEventListener('pointercancel', endPtr);
@@ -645,13 +647,35 @@ $('btnFull').onclick = () => {
   else if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
   else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
 };
+function targetIds() { return [...state.sel]; }
 $('tSplit').onclick = () => {
-  const c = selectedClip()
-    || state.project.clips.find((k) => k.lane === 'video' && state.time > k.start && state.time < k.start + k.dur);
-  if (!c || !splitClip(c.id, state.time)) toast('Coloca el cabezal dentro de un clip para dividirlo');
+  let ids = targetIds();
+  if (!ids.length) ids = state.project.clips.filter((k) => k.lane === 'video' && state.time > k.start && state.time < k.start + k.dur).map((k) => k.id);
+  if (!ids.length || !splitClips(ids, state.time).length) toast('Coloca el cabezal dentro de un clip para dividirlo');
 };
-$('tDup').onclick = () => { const c = selectedClip(); if (c) duplicateClip(c.id); else toast('Selecciona un clip'); };
-$('tDel').onclick = () => { const c = selectedClip(); if (c) removeClip(c.id); else toast('Selecciona un clip'); };
+$('tDup').onclick = () => { const ids = targetIds(); if (ids.length) duplicateClips(ids); else toast('Selecciona un clip'); };
+$('tDel').onclick = () => { const ids = targetIds(); if (ids.length) removeClips(ids); else toast('Selecciona un clip'); };
+
+// ---- modo selección múltiple ----
+function refreshSelUI() {
+  $('tSel').classList.toggle('on', state.selectMode);
+  $('tSel').setAttribute('aria-pressed', state.selectMode);
+  $('selBar').hidden = !state.selectMode;
+  const n = state.sel.size;
+  $('selCount').textContent = n === 1 ? '1 clip' : n + ' clips';
+  $('tDel').querySelector('span').textContent = n > 1 ? `Eliminar (${n})` : 'Eliminar';
+}
+bus.on('select', refreshSelUI);
+bus.on('selectmode', refreshSelUI);
+$('tSel').onclick = () => setSelectMode(!state.selectMode);
+$('sAll').onclick = () => selectIds(state.project.clips.map((k) => k.id));
+$('sNone').onclick = () => selectIds([]);
+$('sFrom').onclick = () => selectIds(state.project.clips.filter((k) => k.start + k.dur > state.time + 0.01).map((k) => k.id));
+$('sLane').onclick = () => {
+  const p = selectedClip();
+  if (!p) { toast('Toca primero un clip de la pista que quieres elegir'); return; }
+  selectIds(state.project.clips.filter((k) => k.lane === p.lane).map((k) => k.id));
+};
 const zoom = $('zoom');
 zoom.oninput = () => timeline.setZoom(+zoom.value);
 $('zIn').onclick = () => { zoom.value = Math.min(300, +zoom.value * 1.35); timeline.setZoom(+zoom.value); };
@@ -662,7 +686,8 @@ document.addEventListener('keydown', (e) => {
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
   if (e.code === 'Space') { e.preventDefault(); state.playing ? pause() : play(); }
   else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); pause(); e.shiftKey ? redo() : undo(); }
-  else if (e.key === 'Delete' || e.key === 'Backspace') { const c = selectedClip(); if (c) { e.preventDefault(); removeClip(c.id); } }
+  else if (e.key === 'Delete' || e.key === 'Backspace') { const ids = targetIds(); if (ids.length) { e.preventDefault(); removeClips(ids); } }
+  else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selectIds(state.project.clips.map((k) => k.id)); }
   else if (e.key.toLowerCase() === 's' && !e.metaKey && !e.ctrlKey) $('tSplit').click();
   else if (e.key === 'ArrowRight') seek(state.time + (e.shiftKey ? 1 : 1 / 30));
   else if (e.key === 'ArrowLeft') seek(state.time - (e.shiftKey ? 1 : 1 / 30));

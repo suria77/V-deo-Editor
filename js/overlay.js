@@ -51,6 +51,38 @@ function heartPath(ctx, x, y, s) {
   ctx.closePath();
 }
 
+function star4(ctx, x, y, s, rgb, a, thin = 0.18) {
+  if (a <= 0.003 || s < 0.5) return;
+  ctx.globalAlpha = clamp(a, 0, 1);
+  ctx.fillStyle = css(rgb, 1);
+  ctx.beginPath();
+  ctx.moveTo(x, y - s); ctx.quadraticCurveTo(x, y, x + s * thin, y); ctx.quadraticCurveTo(x, y, x, y + s);
+  ctx.quadraticCurveTo(x, y, x - s * thin, y); ctx.quadraticCurveTo(x, y, x, y - s);
+  ctx.moveTo(x - s, y); ctx.quadraticCurveTo(x, y, x, y + s * thin); ctx.quadraticCurveTo(x, y, x + s, y);
+  ctx.quadraticCurveTo(x, y, x, y - s * thin); ctx.quadraticCurveTo(x, y, x - s, y);
+  ctx.fill();
+}
+// destello con cruz larga y fina (lens flare)
+function flare(ctx, x, y, len, rgb, a) {
+  if (a <= 0.003) return;
+  ctx.globalAlpha = clamp(a, 0, 1);
+  const gh = ctx.createLinearGradient(x - len, y, x + len, y);
+  gh.addColorStop(0, css(rgb, 0)); gh.addColorStop(0.5, css(rgb, 1)); gh.addColorStop(1, css(rgb, 0));
+  ctx.fillStyle = gh; ctx.fillRect(x - len, y - 1.2, len * 2, 2.4);
+  const gv = ctx.createLinearGradient(x, y - len * 0.7, x, y + len * 0.7);
+  gv.addColorStop(0, css(rgb, 0)); gv.addColorStop(0.5, css(rgb, 1)); gv.addColorStop(1, css(rgb, 0));
+  ctx.fillStyle = gv; ctx.fillRect(x - 1.2, y - len * 0.7, 2.4, len * 1.4);
+}
+function starPoly(ctx, x, y, n, ro, ri, rot) {
+  ctx.beginPath();
+  for (let i = 0; i < n * 2; i++) {
+    const r = i % 2 === 0 ? ro : ri, a = rot + (i * Math.PI) / n - Math.PI / 2;
+    const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
 function particles(ctx, c, t, lt, W, H, g) {
   const id = c.fx, I = c.intensity, sp = c.speed, sz = c.size, seed = c.seed;
   const S = Math.min(W, H) / 1080;
@@ -60,6 +92,191 @@ function particles(ctx, c, t, lt, W, H, g) {
   const N = (n) => Math.max(1, Math.floor(n * I));
   ctx.globalCompositeOperation = PARTICLES.find((p) => p.id === id)?.add ? 'lighter' : 'source-over';
   switch (id) {
+
+    case 'radiant': {
+      const pulse = 0.78 + 0.22 * Math.sin(T * 1.3);
+      const cx = W * 0.5, cy = H * 0.3;
+      const white = mixRgb(base, [255, 255, 255], 0.7);
+      blob(ctx, base, cx, cy, W * 2.4 * sz, W * 2.4 * sz, 0.32 * I * g * pulse);
+      blob(ctx, white, cx, cy, W * 0.9 * sz, W * 0.9 * sz, 0.5 * I * g * pulse);
+      blob(ctx, white, cx, cy, W * 0.25 * sz, W * 0.25 * sz, 0.8 * I * g * pulse);
+      ctx.save();
+      ctx.translate(cx, cy);
+      for (let i = 0; i < 16; i++) {
+        const ang = (i / 16) * Math.PI * 2 + T * 0.1 * (i % 2 ? 1 : -0.7) + rnd(i, 1, seed);
+        const len = H * (0.55 + 0.4 * rnd(i, 2, seed)) * sz, wd = (30 + 70 * rnd(i, 3, seed)) * S * sz;
+        const a = (0.1 + 0.2 * Math.pow(Math.sin(T * 0.8 + i * 1.7), 2)) * I * g;
+        ctx.save(); ctx.rotate(ang);
+        const gr = ctx.createLinearGradient(0, 0, len, 0);
+        gr.addColorStop(0, css(white, 1)); gr.addColorStop(1, css(base, 0));
+        ctx.globalAlpha = a; ctx.fillStyle = gr;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, -wd); ctx.lineTo(len, wd); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+      for (let i = 0; i < N(70); i++) {
+        const r1 = rnd(i, 1, seed), r2 = rnd(i, 2, seed), r4 = rnd(i, 4, seed);
+        const life = 1.2 + r1 * 2;
+        const q = T / life + r2, cyc = Math.floor(q), u = fract(q);
+        const ang = rnd(i, 5 + cyc, seed) * 6.283, rad = (0.05 + 0.55 * Math.pow(rnd(i, 6 + cyc, seed), 0.7)) * H * 0.55;
+        const x = cx + Math.cos(ang) * rad * 0.9, y = cy + Math.sin(ang) * rad;
+        const tw = Math.pow(Math.sin(u * Math.PI), 2);
+        star4(ctx, x, y, (14 + 40 * r4) * S * sz * tw, white, tw * g * 0.95);
+      }
+      break;
+    }
+    case 'constellation': {
+      const n = N(40), pts = [];
+      for (let i = 0; i < n; i++) {
+        const r1 = rnd(i, 1, seed), r2 = rnd(i, 2, seed), r3 = rnd(i, 3, seed), r4 = rnd(i, 4, seed);
+        pts.push({
+          x: W * (0.06 + 0.88 * (0.5 + 0.5 * Math.sin(T * 0.11 * (0.6 + r1) + r2 * 6.283))),
+          y: H * (0.06 + 0.88 * (0.5 + 0.5 * Math.sin(T * 0.09 * (0.6 + r3) + r4 * 6.283))),
+          r4, tw: 0.55 + 0.45 * Math.sin(T * 2.4 * (0.5 + r1) + r2 * 40),
+        });
+      }
+      const D = Math.max(W, H) * 0.2 * sz;
+      ctx.lineCap = 'round';
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y, d = Math.hypot(dx, dy);
+          if (d < D) {
+            ctx.globalAlpha = Math.pow(1 - d / D, 1.2) * 0.75 * I * g;
+            ctx.strokeStyle = css(base, 1);
+            ctx.lineWidth = 2.2 * S;
+            ctx.beginPath(); ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[j].x, pts[j].y); ctx.stroke();
+          }
+        }
+      }
+      for (const p of pts) {
+        const s = (22 + 40 * p.r4) * S * sz;
+        blob(ctx, base, p.x, p.y, s, s, 0.7 * p.tw * g);
+        blob(ctx, [255, 255, 255], p.x, p.y, s * 0.3, s * 0.3, p.tw * g);
+        if (p.r4 > 0.72) star4(ctx, p.x, p.y, s * 1.1 * p.tw, [255, 255, 255], 0.9 * g);
+      }
+      break;
+    }
+    case 'winter': {
+      const palette = [mixRgb(base, [255, 255, 255], 0.35), base, [255, 150, 90], [255, 235, 190], [160, 210, 255]];
+      for (let i = 0; i < 9; i++) {
+        const r1 = rnd(i, 1, seed), r2 = rnd(i, 2, seed), r3 = rnd(i, 3, seed);
+        const x = W * fract(r1 + T * 0.004 * (r3 - 0.5)), y = H * (0.1 + 0.7 * r2);
+        blob(ctx, base, x, y, 300 * S * sz, 300 * S * sz, 0.06 * I * g);
+      }
+      const strands = [[0.04, 0.17, 0.5], [0.12, 0.25, 0.42], [0.2, 0.33, 0.36]];
+      strands.forEach(([yl, yr, sag], si) => {
+        const nb = 13;
+        ctx.globalAlpha = 0.28 * g; ctx.strokeStyle = css(base, 1); ctx.lineWidth = 2 * S;
+        ctx.beginPath();
+        for (let k = 0; k <= 40; k++) {
+          const t = k / 40, x = -0.03 * W + t * 1.06 * W, y = H * ((yl + (yr - yl) * t) + sag * 0.16 * 4 * t * (1 - t) * 0.5);
+          if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        for (let k = 0; k < nb; k++) {
+          const t = (k + 0.5) / nb, x = -0.03 * W + t * 1.06 * W, y = H * ((yl + (yr - yl) * t) + sag * 0.16 * 4 * t * (1 - t) * 0.5);
+          const col = palette[(k + si * 2) % palette.length];
+          const r = rnd(k, 3 + si, seed);
+          const tw = 0.45 + 0.55 * Math.pow(0.5 + 0.5 * Math.sin(T * 2.2 * (0.6 + r * 0.8) + k * 2.1 + si), 2);
+          const s = (90 + 40 * r) * S * sz;
+          blob(ctx, col, x, y + 24 * S, s * 1.6, s * 1.6, 0.42 * tw * I * g);
+          blob(ctx, [255, 255, 255], x, y + 24 * S, s * 0.35, s * 0.35, tw * I * g);
+          star4(ctx, x, y + 24 * S, s * 0.5 * tw, [255, 255, 255], 0.55 * tw * I * g);
+        }
+      });
+      for (let i = 0; i < N(50); i++) {
+        const r1 = rnd(i, 1, seed), r2 = rnd(i, 2, seed), r3 = rnd(i, 3, seed), r4 = rnd(i, 4, seed);
+        const life = 7 + r1 * 6, u = fract(T / life + r2);
+        blob(ctx, [255, 255, 255], W * (r3 + 0.03 * Math.sin(u * 20 + r4 * 6)), H * (u * 1.1 - 0.05), (8 + r4 * 16) * S * sz, (8 + r4 * 16) * S * sz, 0.6 * g);
+      }
+      break;
+    }
+    case 'stellar': {
+      const white = [255, 255, 255];
+      for (let i = 0; i < N(190); i++) {
+        const r1 = rnd(i, 1, seed), r2 = rnd(i, 2, seed), r3 = rnd(i, 3, seed), r4 = rnd(i, 4, seed);
+        const tw = 0.3 + 0.7 * Math.pow(0.5 + 0.5 * Math.sin(T * (1 + 3 * r1) + r2 * 60), 2);
+        const s = (5 + 14 * r4 * r4) * S * sz;
+        blob(ctx, r4 > 0.8 ? base : white, W * r3, H * r2, s, s, (0.35 + 0.65 * r4) * tw * g);
+      }
+      for (let i = 0; i < 9; i++) {
+        const r1 = rnd(i, 11, seed), r2 = rnd(i, 12, seed), r3 = rnd(i, 13, seed);
+        const tw = 0.4 + 0.6 * Math.pow(Math.sin(T * (0.7 + r3) + i * 3), 2);
+        const x = W * (0.08 + 0.84 * r1), y = H * (0.06 + 0.8 * r2), s = (40 + 70 * r3) * S * sz;
+        blob(ctx, base, x, y, s * 2.4, s * 2.4, 0.5 * tw * g);
+        flare(ctx, x, y, s * 2.2, white, 0.55 * tw * g);
+        star4(ctx, x, y, s * tw, white, g);
+      }
+      const per = 3.4 / sp;
+      const cyc = Math.floor((tt) / per), u = fract(tt / per) / 0.32;
+      if (u >= 0 && u < 1 && rnd(cyc, 21, seed) > 0.3) {
+        const x0 = W * (0.05 + 0.7 * rnd(cyc, 22, seed)), y0 = H * (0.03 + 0.35 * rnd(cyc, 23, seed));
+        const dx = 0.5 * W, dy = 0.34 * H;
+        const hx = x0 + dx * u, hy = y0 + dy * u;
+        const tail = ctx.createLinearGradient(hx, hy, hx - dx * 0.35, hy - dy * 0.35);
+        tail.addColorStop(0, css(white, 1)); tail.addColorStop(1, css(base, 0));
+        ctx.globalAlpha = Math.sin(u * Math.PI) * g; ctx.strokeStyle = tail; ctx.lineWidth = 5 * S; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx - dx * 0.35, hy - dy * 0.35); ctx.stroke();
+        blob(ctx, white, hx, hy, 60 * S, 60 * S, Math.sin(u * Math.PI) * g);
+      }
+      break;
+    }
+    case 'spotlight': {
+      const sway = Math.sin(T * 0.3) * 0.08;
+      const sx = W * (0.5 + sway), topW = 50 * S * sz, botW = W * 0.62 * sz, yb = H * 0.9;
+      const white = mixRgb(base, [255, 255, 255], 0.6);
+      blob(ctx, white, sx, -H * 0.02, W * 0.9, W * 0.45, 0.7 * I * g);
+      for (const [k, a] of [[1, 0.26], [0.55, 0.3], [0.22, 0.34]]) {
+        const gr = ctx.createLinearGradient(0, 0, 0, yb);
+        gr.addColorStop(0, css(white, 1)); gr.addColorStop(0.6, css(base, 0.45)); gr.addColorStop(1, css(base, 0));
+        ctx.globalAlpha = a * I * g * (0.9 + 0.1 * Math.sin(T * 1.7 + k));
+        ctx.fillStyle = gr;
+        ctx.beginPath();
+        ctx.moveTo(sx - topW * k, 0); ctx.lineTo(sx + topW * k, 0);
+        ctx.lineTo(sx + botW * k * 0.5, yb); ctx.lineTo(sx - botW * k * 0.5, yb);
+        ctx.closePath(); ctx.fill();
+      }
+      blob(ctx, base, sx, yb, botW * 1.2, botW * 0.34, 0.5 * I * g);
+      blob(ctx, white, sx, yb, botW * 0.6, botW * 0.16, 0.5 * I * g);
+      for (let i = 0; i < N(90); i++) {
+        const r1 = rnd(i, 1, seed), r2 = rnd(i, 2, seed), r3 = rnd(i, 3, seed), r4 = rnd(i, 4, seed);
+        const v = fract(r1 + T * 0.03 * (0.3 + r4) * (r3 < 0.5 ? 1 : -1));
+        const y = yb * v, half = (topW + (botW * 0.5 - topW) * v) * (2 * r2 - 1) * 0.92;
+        const x = sx + half + Math.sin(T * 0.8 + r3 * 20) * 14 * S;
+        const tw = 0.4 + 0.6 * Math.pow(0.5 + 0.5 * Math.sin(T * 2 + r4 * 40), 2);
+        const s = (8 + 18 * r4) * S * sz;
+        blob(ctx, white, x, y, s, s, tw * (1 - v * 0.5) * g);
+      }
+      break;
+    }
+    case 'shards': {
+      const per = 2.8 / sp;
+      const gold = mixRgb(base, [255, 255, 255], 0.3);
+      for (let layer = 0; layer < 2; layer++) {
+        const q = tt / per + layer * 0.5, cyc = Math.floor(q), u = fract(q);
+        const cx = W * (0.25 + 0.5 * rnd(cyc, 31 + layer, seed)), cy = H * (0.22 + 0.35 * rnd(cyc, 32 + layer, seed));
+        if (u < 0.18) {
+          const f = 1 - u / 0.18;
+          blob(ctx, [255, 255, 255], cx, cy, 460 * S * sz * (1 + u * 3), 460 * S * sz * (1 + u * 3), 0.85 * f * I * g);
+          blob(ctx, base, cx, cy, 800 * S * sz, 800 * S * sz, 0.35 * f * I * g);
+        }
+        for (let i = 0; i < N(34); i++) {
+          const r1 = rnd(i + layer * 50, 1, seed), r2 = rnd(i + layer * 50, 2, seed), r3 = rnd(i + layer * 50, 3, seed), r4 = rnd(i + layer * 50, 4, seed);
+          const ang = r1 * 6.283, spd = (0.18 + 0.55 * r2) * Math.min(W, H) * 1.0 * sz;
+          const e = 1 - Math.pow(1 - u, 2.2);
+          const x = cx + Math.cos(ang) * spd * e * 1.5, y = cy + Math.sin(ang) * spd * e * 1.5 + 0.28 * H * u * u;
+          const a = Math.pow(1 - u, 1.1) * (0.6 + 0.4 * Math.sin(T * 14 + r3 * 40)) * I * g;
+          const sz2 = (16 + 46 * r4) * S * sz * (1 - u * 0.55);
+          const col = r3 < 0.5 ? gold : r3 < 0.8 ? [255, 255, 255] : mixRgb(base, [255, 150, 200], 0.6);
+          blob(ctx, col, x, y, sz2 * 3, sz2 * 3, a * 0.5);
+          ctx.globalAlpha = clamp(a, 0, 1);
+          ctx.fillStyle = css(col, 1);
+          starPoly(ctx, x, y, r4 < 0.5 ? 4 : 5, sz2, sz2 * (r4 < 0.5 ? 0.28 : 0.45), r3 * 6 + u * (3 + r4 * 7));
+          ctx.fill();
+        }
+      }
+      break;
+    }
     case 'fire': {
       const core = mixRgb(base, [255, 250, 220], 0.75), hot = mixRgb(base, [255, 220, 90], 0.5), mid = base, tail = base.map((v, k) => Math.round(v * (k === 0 ? 0.75 : 0.3)));
       const flick = 0.85 + 0.15 * Math.sin(T * 9.7) * Math.sin(T * 5.3);

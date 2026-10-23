@@ -1,5 +1,5 @@
 // Línea de tiempo táctil: pistas, clips arrastrables, recorte por los bordes, imán y cabezal.
-import { state, bus, LANES, LANE_NAMES, select, commit, projectDuration } from './state.js';
+import { state, bus, LANES, LANE_NAMES, select, toggleSel, selectIds, commit, projectDuration } from './state.js';
 import { h, fmtTime } from './ui.js';
 import { PARTICLES, POSTFX } from './presets.js';
 
@@ -22,6 +22,8 @@ export class Timeline {
     this.clipEls = new Map();
     bus.on('change', (e) => { if (e && e.structural) this.render(); });
     bus.on('select', () => this.updateSel());
+    bus.on('selectmode', () => { this.scroll.classList.toggle('selmode', state.selectMode); });
+    this.bindBand();
     bus.on('time', () => this.updatePlayhead());
     bus.on('media', () => this.render());
     window.addEventListener('resize', () => this.render());
@@ -149,7 +151,57 @@ export class Timeline {
   }
 
   updateSel() {
-    for (const [id, el] of this.clipEls) el.classList.toggle('sel', id === state.selection);
+    for (const [id, el] of this.clipEls) {
+      el.classList.toggle('sel', state.sel.has(id));
+      el.classList.toggle('prim', id === state.selection && state.sel.size > 1);
+    }
+  }
+
+  // Rectángulo de selección (modo «Seleccionar»)
+  bindBand() {
+    this.inner.addEventListener('pointerdown', (e) => {
+      if (!state.selectMode) return;
+      if (e.target.closest('.clip') || e.target.closest('.ruler')) return;
+      if (!e.target.closest('.lane')) return;
+      e.preventDefault();
+      const r0 = this.inner.getBoundingClientRect();
+      const sx = e.clientX, sy = e.clientY;
+      const band = h('div', { class: 'band' });
+      this.inner.append(band);
+      let moved = false;
+      this.inner.setPointerCapture(e.pointerId);
+      const box = (ev) => ({ x1: Math.min(sx, ev.clientX), y1: Math.min(sy, ev.clientY), x2: Math.max(sx, ev.clientX), y2: Math.max(sy, ev.clientY) });
+      const mv = (ev) => {
+        if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 6) moved = true;
+        const b = box(ev);
+        band.style.cssText = `left:${b.x1 - r0.left}px;top:${b.y1 - r0.top}px;width:${b.x2 - b.x1}px;height:${b.y2 - b.y1}px`;
+        // vista previa de lo que quedaría seleccionado
+        for (const [id, el] of this.clipEls) {
+          const r = el.getBoundingClientRect();
+          const hit = r.right >= b.x1 && r.left <= b.x2 && r.bottom >= b.y1 && r.top <= b.y2;
+          el.classList.toggle('band-hit', hit);
+        }
+        // desplazamiento automático en los bordes
+        const sr = this.scroll.getBoundingClientRect();
+        if (ev.clientX > sr.right - 40) this.scroll.scrollLeft += 14;
+        else if (ev.clientX < sr.left + LABEL_W + 20) this.scroll.scrollLeft -= 14;
+        if (ev.clientY > sr.bottom - 30) this.scroll.scrollTop += 10;
+        else if (ev.clientY < sr.top + 50) this.scroll.scrollTop -= 10;
+      };
+      const up = (ev) => {
+        this.inner.removeEventListener('pointermove', mv);
+        this.inner.removeEventListener('pointerup', up);
+        this.inner.removeEventListener('pointercancel', up);
+        band.remove();
+        const hits = [];
+        for (const [id, el] of this.clipEls) { if (el.classList.contains('band-hit')) hits.push(id); el.classList.remove('band-hit'); }
+        if (moved) selectIds(hits);
+        else this.app.seek(this.tAt(ev.clientX));
+      };
+      this.inner.addEventListener('pointermove', mv);
+      this.inner.addEventListener('pointerup', up);
+      this.inner.addEventListener('pointercancel', up);
+    });
   }
 
   updatePlayhead() {
@@ -200,14 +252,25 @@ export class Timeline {
       e.stopPropagation();
       e.preventDefault();
       const mode = e.target.classList.contains('l') ? 'l' : e.target.classList.contains('r') ? 'r' : 'move';
-      if (state.selection !== c.id) select(c.id);
+      const wasSel = state.sel.has(c.id);
+      // al empezar: si no estaba seleccionado, se selecciona (en modo selección se añade al grupo)
+      if (!wasSel) {
+        if (state.selectMode) toggleSel(c.id); else select(c.id);
+      } else if (state.selection !== c.id) {
+        state.selection = c.id; bus.emit('select');
+      }
       this.app.showInspector && this.app.showInspector();
       const x0 = e.clientX;
-      const o = { start: c.start, dur: c.dur, in: c.in || 0 };
+      const group = mode === 'move' ? [...state.sel].map((id) => state.project.clips.find((k) => k.id === id)).filter(Boolean) : [c];
+      const origin = new Map(group.map((k) => [k.id, { start: k.start, dur: k.dur, in: k.in || 0 }]));
+      const o = origin.get(c.id);
+      const minStart = Math.min(...group.map((k) => origin.get(k.id).start));
       const m = c.media ? state.media.get(c.media) : null;
       const srcLimited = (c.type === 'video' || c.type === 'audio') && m && m.duration;
       const thr = 10 / this.pps;
-      const targets = this.snapTargets(c.id);
+      const gids = new Set(group.map((k) => k.id));
+      const targets = [0, state.time];
+      for (const k of state.project.clips) if (!gids.has(k.id)) targets.push(k.start, k.start + k.dur);
       const snap = (t) => { let best = t, bd = thr; for (const s of targets) { const d = Math.abs(s - t); if (d < bd) { bd = d; best = s; } } return best; };
       let moved = false;
       el.setPointerCapture(e.pointerId);
@@ -217,10 +280,11 @@ export class Timeline {
         const d = (ev.clientX - x0) / this.pps;
         const sp = c.speed || 1;
         if (mode === 'move') {
-          let s = Math.max(0, o.start + d);
-          const s1 = snap(s), s2 = snap(s + o.dur) - o.dur;
-          s = Math.abs(s1 - s) <= Math.abs(s2 - s) ? s1 : s2;
-          c.start = Math.max(0, s);
+          let dd = Math.max(-minStart, d);
+          const s1 = snap(o.start + dd) - o.start, s2 = snap(o.start + o.dur + dd) - o.start - o.dur;
+          dd = Math.abs(s1 - dd) <= Math.abs(s2 - dd) ? s1 : s2;
+          dd = Math.max(-minStart, dd);
+          for (const k of group) { k.start = origin.get(k.id).start + dd; const ke = this.clipEls.get(k.id); if (ke) this.place(ke, k); }
         } else if (mode === 'l') {
           let ns = snap(o.start + d);
           let dd = ns - o.start;
@@ -230,13 +294,14 @@ export class Timeline {
           c.start = o.start + dd;
           c.dur = o.dur - dd;
           if ('in' in c) c.in = Math.max(0, o.in + dd * sp);
+          this.place(el, c);
         } else {
           let ne = snap(o.start + o.dur + d);
           let nd = Math.max(0.1, ne - o.start);
           if (srcLimited) nd = Math.min(nd, (m.duration - o.in) / sp);
           c.dur = nd;
+          this.place(el, c);
         }
-        this.place(el, c);
         if (mode !== 'move') this.app.seek(mode === 'l' ? c.start : c.start + c.dur - 0.001, true);
         bus.emit('change', { live: true });
       };
@@ -248,6 +313,11 @@ export class Timeline {
           this.render();
           bus.emit('change', { structural: false, timing: true });
           commit();
+        } else if (wasSel && !state.selectMode) {
+          // toque simple sobre un clip ya seleccionado → queda solo ese
+          if (state.sel.size > 1) select(c.id);
+        } else if (wasSel && state.selectMode) {
+          toggleSel(c.id);
         }
       };
       el.addEventListener('pointermove', mv);

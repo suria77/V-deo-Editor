@@ -164,6 +164,14 @@ export const TEXT_STYLES = [
 
 // Efectos de partículas / ambiente. add = mezcla aditiva (luz)
 export const PARTICLES = [
+  // --- luces y estrellas ---
+  { id: 'radiant', n: 'Brillo radiante', i: '🔆', cat: 'luz', add: true, color: '#ffe9a8', size: 1, speed: 1, intensity: 0.7 },
+  { id: 'constellation', n: 'Constelación', i: '🌌', cat: 'luz', add: true, color: '#cfe0ff', size: 1, speed: 1, intensity: 0.7 },
+  { id: 'winter', n: 'Luces de invierno', i: '🎄', cat: 'luz', add: true, color: '#ffd98a', size: 1, speed: 1, intensity: 0.7 },
+  { id: 'stellar', n: 'Estelar', i: '💫', cat: 'luz', add: true, color: '#dfe9ff', size: 1, speed: 1, intensity: 0.7 },
+  { id: 'spotlight', n: 'Reflector celestial', i: '🔦', cat: 'luz', add: true, color: '#fff3cf', size: 1, speed: 1, intensity: 0.7 },
+  { id: 'shards', n: 'Fragmentos de estrella', i: '🌠', cat: 'luz', add: true, color: '#ffe08a', size: 1, speed: 1, intensity: 0.7 },
+  // --- ambiente ---
   { id: 'fire', n: 'Fuego', i: '🔥', add: true, color: '#ff7a1a', size: 1, speed: 1, intensity: 0.7 },
   { id: 'embers', n: 'Brasas', i: '✨', add: true, color: '#ff9a3c', size: 1, speed: 1, intensity: 0.6 },
   { id: 'fog', n: 'Niebla', i: '🌫️', add: false, color: '#ffffff', size: 1, speed: 1, intensity: 0.6 },
