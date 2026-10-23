@@ -6,6 +6,7 @@ import {
   TEXT_IN, TEXT_OUT, TEXT_LOOP, TEXT_STYLES, PARTICLES, POSTFX,
 } from './presets.js';
 import { icon } from './icons.js';
+import { XFADES, nextAdjacent } from './xfade.js';
 import { propsFor, valueAt, setValue, setKf, removeKf, kfAt, hasKf, kfTimes, anyKfAt, toggleAllKf, anyKf } from './kf.js';
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -30,7 +31,7 @@ const A = (id, n, i, extra = {}) => ({ id, n, i, ...extra });
 const CLIP_TOOLS = {
   video: [A('split', 'Dividir', 'split', { act: 'split' }), A('speed', 'Velocidad', 'speed'), A('vol', 'Volumen', 'volume'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }),
     A('pos', 'Posición', 'pos'), A('opac', 'Opacidad', 'opacity'), A('filter', 'Filtros', 'filters'), A('adj', 'Ajustar', 'adjust'),
-    A('motion', 'Movimiento', 'motion'), A('trans', 'Transición', 'trans'), A('mask', 'Máscara', 'mask'), A('key', 'Croma', 'chroma'),
+    A('motion', 'Movimiento', 'motion'), A('xfade', 'Transición', 'trans'), A('trans', 'Entrada/salida', 'anim'), A('mask', 'Máscara', 'mask'), A('key', 'Croma', 'chroma'),
     A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' }), A('all', 'Todo', 'all')],
   text: [A('txt', 'Editar', 'edit'), A('tstyle', 'Estilo', 'style'), A('tpos', 'Posición', 'pos'), A('tanim', 'Animación', 'anim'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }),
     A('split', 'Dividir', 'split', { act: 'split' }), A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' }), A('all', 'Todo', 'all')],
@@ -41,7 +42,7 @@ const CLIP_TOOLS = {
 CLIP_TOOLS.image = CLIP_TOOLS.video.filter((t) => t.id !== 'speed' && t.id !== 'vol');
 const DEFAULT_SEC = { video: 'pos', image: 'pos', text: 'txt', fx: 'fxp', audio: 'vol' };
 const MAIN_IDS = new Set(MAIN_TOOLS.map((t) => t.id).filter((id) => id !== 'filter' && id !== 'adj'));
-const TITLES = { all: 'Todos los ajustes', kf: 'Keyframes', fxp: 'Efecto', txt: 'Texto', tstyle: 'Estilo del texto', tpos: 'Posición', tanim: 'Animación', pos: 'Posición y tamaño', opac: 'Opacidad y fusión', filter: 'Filtros', adj: 'Ajustar color', motion: 'Movimiento', trans: 'Transiciones', mask: 'Recorte y máscara', key: 'Pantalla verde (croma)', speed: 'Velocidad', vol: 'Volumen y sonido' };
+const TITLES = { all: 'Todos los ajustes', kf: 'Keyframes', fxp: 'Efecto', txt: 'Texto', tstyle: 'Estilo del texto', tpos: 'Posición', tanim: 'Animación', pos: 'Posición y tamaño', opac: 'Opacidad y fusión', filter: 'Filtros', adj: 'Ajustar color', motion: 'Movimiento', trans: 'Entrada y salida', xfade: 'Transición con el siguiente clip', mask: 'Recorte y máscara', key: 'Pantalla verde (croma)', speed: 'Velocidad', vol: 'Volumen y sonido' };
 
 export class Panels {
   constructor(app) {
@@ -264,7 +265,8 @@ export class Panels {
 
   // ---------------- AJUSTES DEL CLIP ----------------
   inspectTab(only = 'all') {
-    const b = this.body;
+    const body = this.body;
+    const b = { append: (...xs) => body.append(...xs.filter((x) => x != null && x !== false)), classList: body.classList };
     const c = selectedClip();
     if (!c) return;
     const app = this.app;
@@ -274,7 +276,7 @@ export class Panels {
     const multi = sel.length > 1;
     const kindOf = (k) => (k.type === 'image' ? 'video' : k.type);
     const GROUPS = {
-      video: ['tf', 'crop', 'mask', 'adj', 'filter', 'filterAmt', 'chroma', 'blend', 'motion', 'transIn', 'transOut', 'volume', 'muted', 'afadeIn', 'afadeOut', 'lane'],
+      video: ['tf', 'crop', 'mask', 'adj', 'filter', 'filterAmt', 'chroma', 'blend', 'motion', 'transIn', 'transOut', 'xfade', 'volume', 'muted', 'afadeIn', 'afadeOut', 'lane'],
       text: ['font', 'weight', 'italic', 'upper', 'size', 'color', 'color2', 'stroke', 'shadow', 'bg', 'spacing', 'lineHeight', 'width', 'align', 'rot', 'x', 'y', 'opacity', 'inAnim', 'outAnim', 'loop', 'karaoke'],
       fx: ['intensity', 'speed', 'size', 'color', 'fade'],
       audio: ['volume', 'afadeIn', 'afadeOut'],
@@ -416,7 +418,31 @@ export class Panels {
         chips(MOTIONS, c.motion.type, (v) => { c.motion.type = v; live(); done(); }),
         S('Intensidad', c.motion, 'amount', 0, 1, 0.01, pct)));
 
-      b.append(sec('trans', 'Transiciones', '🔀',
+      {
+        const nx = nextAdjacent(state.project, c);
+        const cur = c.xfade && c.xfade.type !== 'none' ? c.xfade : null;
+        const durS = slider('Duración', cur ? cur.dur : 0.8, 0.2, 2.5, 0.05, (v) => { if (c.xfade) c.xfade.dur = v; live(); }, () => { done(); bus.emit('change', { structural: true, keepPanel: true }); if (c.xfade && nx) app.preview(c.start + c.dur - c.xfade.dur / 2 - 0.4, c.xfade.dur + 0.8); }, secs);
+        b.append(sec('xfade', 'Transición con el siguiente clip', '🔀',
+          nx ? null : h('p', { class: 'hint' }, 'Este clip no tiene otro clip pegado justo después en su misma pista. Las transiciones se ponen entre dos clips seguidos: toca el botón «+» que aparece entre ellos en la línea de tiempo.'),
+          nx ? chips(XFADES, cur ? cur.type : 'none', (v) => {
+            c.xfade = v === 'none' ? null : { type: v, dur: cur ? cur.dur : 0.8 };
+            done(); bus.emit('change', { structural: true, keepPanel: true });
+            if (c.xfade) app.preview(c.start + c.dur - c.xfade.dur / 2 - 0.4, c.xfade.dur + 0.8);
+            this.render();
+          }) : null,
+          nx && cur ? durS : null,
+          nx ? h('button', { class: 'btn block', style: 'margin-top:12px', onclick: () => {
+            const t0 = c.xfade;
+            let n = 0;
+            for (const k of state.project.clips) {
+              if ((k.type === 'video' || k.type === 'image') && k.lane === c.lane && nextAdjacent(state.project, k)) { k.xfade = t0 ? { ...t0 } : null; n++; }
+            }
+            done(); bus.emit('change', { structural: true, keepPanel: true });
+            toast(t0 ? `Transición puesta en ${n} cortes ✓` : `Transiciones quitadas de ${n} cortes`);
+          } }, 'Aplicar a todos los cortes') : null,
+          nx && cur ? h('button', { class: 'btn block', style: 'margin-top:8px', onclick: () => app.preview(c.start + c.dur - c.xfade.dur / 2 - 0.6, c.xfade.dur + 1.2) }, '▶ Ver la transición') : null));
+      }
+      b.append(sec('trans', 'Entrada y salida del clip', '🔀',
         h('div', { class: 'field' }, h('label', {}, 'Al entrar')),
         chips(TRANSITIONS, c.transIn.type, (v) => { c.transIn.type = v; live(); done(); app.preview(c.start, Math.min(c.dur, c.transIn.dur + 0.4)); }),
         S('Duración de entrada', c.transIn, 'dur', 0.1, 2, 0.05, secs),

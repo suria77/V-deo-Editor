@@ -3,6 +3,7 @@ import { state, bus, LANES, LANE_NAMES, select, toggleSel, selectIds, commit, pr
 import { h, fmtTime } from './ui.js';
 import { PARTICLES, POSTFX } from './presets.js';
 import { kfTimes } from './kf.js';
+import { nextAdjacent, XFADES } from './xfade.js';
 
 const LABEL_W = 78;
 const ROW_H = { overlay: 58, video: 64, text: 46, fx: 46, audio: 54 };
@@ -95,6 +96,19 @@ export class Timeline {
         area.append(el);
         this.clipEls.set(c.id, el);
         if (el._wave) requestAnimationFrame(() => this.drawWave(el._wave, c));
+      }
+      // botón de transición entre dos clips seguidos
+      if (L.lane === 'video' || L.lane === 'overlay') {
+        for (const { c, row } of L.placed) {
+          const nx = nextAdjacent(state.project, c);
+          if (!nx) continue;
+          const on = c.xfade && c.xfade.type !== 'none';
+          const d = on ? XFADES.find((x) => x.id === c.xfade.type) : null;
+          const b = h('button', { class: 'xf-btn' + (on ? ' on' : ''), title: on ? 'Transición: ' + (d ? d.n : '') : 'Añadir transición', style: `left:${this.x(c.start + c.dur)}px;top:${4 + row * ROW_H[L.lane] + (ROW_H[L.lane] - 6) / 2}px` }, on ? '⧓' : '+');
+          b.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
+          b.addEventListener('click', (e) => { e.stopPropagation(); this.app.openXfade && this.app.openXfade(c); });
+          area.append(b);
+        }
       }
       this.inner.append(lane);
     }

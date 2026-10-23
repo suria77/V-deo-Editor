@@ -328,3 +328,9 @@ body.resizing, body.resizing * { cursor: inherit !important; }
 .sel-box:not(.prim) .hd { display: none; }
 .sel-box .tl { left: -7px; top: -7px; } .sel-box .tr { right: -7px; top: -7px; }
 .sel-box .bl { left: -7px; bottom: -7px; } .sel-box .br { right: -7px; bottom: -7px; }
+
+/* botón de transición entre clips */
+.xf-btn { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 9px; border: 2px solid #2a2c31; background: #e9ebef; color: #23262b; font-size: 18px; font-weight: 800; line-height: 1; display: grid; place-items: center; z-index: 6; padding: 0; box-shadow: 0 2px 6px rgba(0,0,0,.5); touch-action: manipulation; }
+.xf-btn::before { content: ''; position: absolute; inset: -8px; }
+.xf-btn.on { background: var(--accent); color: var(--accent-ink); font-size: 16px; }
+.xf-btn:active { transform: scale(.92); }

@@ -15,6 +15,7 @@ import { ASPECTS } from './presets.js';
 import { h, fmtTime, toast, openModal, closeModal } from './ui.js';
 import { openSubtitles, openSubEditor, subClips } from './subs.js';
 import { icon } from './icons.js';
+import { xfadeAt } from './xfade.js';
 import { valueAt, setValue, gainAt, toggleAllKf, anyKfAt } from './kf.js';
 
 const $ = (id) => document.getElementById(id);
@@ -92,14 +93,21 @@ function elementAudio(c, v, active, t) {
 }
 
 function syncVideos(t) {
+  const xf = xfadeAt(state.project, t);
   for (const c of state.project.clips) {
     if (c.type !== 'video') continue;
     const v = videoFor(c);
     if (!v) continue;
-    const active = t >= c.start && t < c.start + c.dur;
-    elementAudio(c, v, active, t);
-    const target = c.in + (t - c.start) * c.speed;
-    if (active) {
+    const inClip = t >= c.start && t < c.start + c.dur;
+    const active = inClip || xf.has(c.id);
+    elementAudio(c, v, inClip, t);
+    const m0 = state.media.get(c.media);
+    const target = Math.min(c.in + Math.max(0, t - c.start) * c.speed, Math.max(0, ((m0 && m0.duration) || 1e9) - 0.03));
+    if (active && t < c.start) {
+      // el clip que entra en una transición: primer fotograma quieto
+      if (!v.paused) v.pause();
+      if (Math.abs(v.currentTime - target) > 0.02 && !v.seeking) v.currentTime = target;
+    } else if (active) {
       const rate = Math.min(4, Math.max(0.25, c.speed));
       if (v.playbackRate !== rate) v.playbackRate = rate;
       if (state.playing) {
@@ -528,14 +536,15 @@ function seekVideo(v, t) {
 
 async function prepareFrame(t) {
   const waits = [];
+  const xf = xfadeAt(state.project, t);
   for (const c of state.project.clips) {
     if (c.type !== 'video') continue;
     const v = videoFor(c);
     if (!v) continue;
     if (!v.paused) v.pause();
-    if (t >= c.start && t < c.start + c.dur) {
+    if ((t >= c.start && t < c.start + c.dur) || xf.has(c.id)) {
       const m = state.media.get(c.media);
-      const target = Math.min(Math.max(0, c.in + (t - c.start) * c.speed), Math.max(0, (m.duration || 1e9) - 0.02));
+      const target = Math.min(Math.max(0, c.in + Math.max(0, t - c.start) * c.speed), Math.max(0, (m.duration || 1e9) - 0.02));
       if (v.readyState < 2 || Math.abs(v.currentTime - target) > 0.0005) waits.push(seekVideo(v, target));
     }
   }
@@ -691,6 +700,7 @@ function updateUndo() {
 
 // ---------- app compartida con paneles/timeline ----------
 const app = {
+  openXfade: (c) => { if (!state.sel.has(c.id) || state.sel.size > 1) select(c.id); panels.open('xfade'); },
   audio, pause, openSubtitles: () => openSubtitles(app), openSubEditor: () => openSubEditor(app), subCount: () => subClips().length,
   seek, pickFiles, addMediaToTimeline: (m, q, lane) => addMediaToTimeline(m, q, lane), addText, addFx, recordVoice, openProject,
   changed: () => { dirty = true; },

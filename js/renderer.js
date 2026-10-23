@@ -1,4 +1,5 @@
 import { animClip } from './kf.js';
+import { xfadeAt } from './xfade.js';
 // Motor de composición WebGL2: capas de vídeo/imagen con color, chroma, máscaras, transiciones
 // + superposición 2D (texto y partículas) + post-proceso (glitch, VHS, etc.)
 import { FILTERS, ADJ_DEFAULT } from './presets.js';
@@ -215,7 +216,7 @@ function hexToRgb(h) {
 const MASK_IDS = { none: 0, circle: 1, rounded: 2, ellipse: 3, fadeBottom: 4, fadeTop: 5, fadeSides: 6 };
 
 // ---- Transformación animada de un clip visual en el instante lt ----
-export function computeTransform(c, lt, W, H, srcW, srcH) {
+export function computeTransform(c, lt, W, H, srcW, srcH, xf, tAbs = 0) {
   const tf = c.tf;
   const fitS = tf.fit === 'contain' ? Math.min(W / srcW, H / srcH) : Math.max(W / srcW, H / srcH);
   let scale = tf.scale;
@@ -273,10 +274,55 @@ export function computeTransform(c, lt, W, H, srcW, srcH) {
     }
   };
   const ti = c.transIn;
-  if (ti.type !== 'none' && lt < ti.dur) apply(ti.type, easeOut(lt / ti.dur), 1, true);
+  if (ti.type !== 'none' && lt < ti.dur && !(xf && xf.role === 'in')) apply(ti.type, easeOut(Math.max(0, lt) / ti.dur), 1, true);
   const to = c.transOut;
   const rem = c.dur - lt;
-  if (to.type !== 'none' && rem < to.dur) apply(to.type, easeOut(rem / to.dur), -1, false);
+  if (to.type !== 'none' && rem < to.dur && !(xf && xf.role === 'out')) apply(to.type, easeOut(Math.max(0, rem) / to.dur), -1, false);
+  // transición entre dos clips
+  if (xf) {
+    const p = clamp(xf.p, 0, 1), e = p * p * (3 - 2 * p), out = xf.role === 'out';
+    switch (xf.type) {
+      case 'fade': if (!out) alpha *= e; break;
+      case 'black': alpha *= out ? clamp(1 - 2 * p, 0, 1) : clamp(2 * p - 1, 0, 1); break;
+      case 'white': {
+        const w = Math.sin(p * Math.PI);
+        flash += w * 1.25;
+        if (out) { if (p > 0.5) alpha = 0; } else if (p <= 0.5) alpha = 0;
+        break;
+      }
+      case 'flash': if (!out) alpha *= clamp((p - 0.3) / 0.4, 0, 1); flash += Math.pow(Math.sin(p * Math.PI), 2) * 0.6; lod += Math.sin(p * Math.PI) * 1.5; break;
+      case 'zoomIn':
+        if (out) { scale *= 1 + 1.4 * e; lod += e * 4; alpha *= 1 - clamp((p - 0.35) / 0.4, 0, 1); }
+        else { scale *= 0.75 + 0.25 * e; lod += (1 - e) * 4; alpha *= clamp((p - 0.25) / 0.4, 0, 1); }
+        break;
+      case 'zoomOut':
+        if (out) { scale *= 1 - 0.45 * e; lod += e * 3; alpha *= 1 - clamp((p - 0.35) / 0.4, 0, 1); }
+        else { scale *= 1.6 - 0.6 * e; lod += (1 - e) * 4; alpha *= clamp((p - 0.25) / 0.4, 0, 1); }
+        break;
+      case 'slideL': cx += out ? -e * W : (1 - e) * W; break;
+      case 'slideR': cx += out ? e * W : -(1 - e) * W; break;
+      case 'slideUp': cy += out ? -e * H : (1 - e) * H; break;
+      case 'slideDown': cy += out ? e * H : -(1 - e) * H; break;
+      case 'spin':
+        if (out) { rot += e * Math.PI; scale *= 1 - 0.7 * e; alpha *= 1 - clamp((p - 0.4) / 0.3, 0, 1); }
+        else { rot -= (1 - e) * Math.PI; scale *= 0.3 + 0.7 * e; alpha *= clamp((p - 0.3) / 0.3, 0, 1); }
+        break;
+      case 'blur': if (out) { lod += e * 7; } else { lod += (1 - e) * 7; alpha *= e; } break;
+      case 'wipeL': if (!out) wipe = [-1, 0, e]; break;
+      case 'wipeUp': if (!out) wipe = [0, -1, e]; break;
+      case 'glitch': {
+        const n = Math.floor(tAbs * 24);
+        const r = Math.sin(n * 91.3 + (out ? 0 : 17)) * 43758.5453, rr = r - Math.floor(r);
+        const k = Math.sin(p * Math.PI);
+        cx += (rr - 0.5) * 0.3 * W * k;
+        cy += (Math.sin(n * 7.1) * 0.5) * 0.04 * H * k;
+        if (out) { if (p > 0.5 && rr > 0.25) alpha = 0; } else if (p < 0.5 && rr < 0.75) alpha = 0;
+        flash += k * (rr > 0.8 ? 0.6 : 0);
+        break;
+      }
+      default: if (!out) alpha *= e;
+    }
+  }
   return {
     cx, cy, rot, alpha, lod, wipe, flash,
     w: srcW * fitS * scale, h: srcH * fitS * scale, fitS, scale,
@@ -415,12 +461,12 @@ export class Renderer {
     }
   }
 
-  drawLayer(c, lt, t, m, videoEl) {
-    c = animClip(c, lt);
+  drawLayer(c, lt, t, m, videoEl, xf) {
+    c = animClip(c, Math.max(0, Math.min(c.dur, lt)));
     const gl = this.gl;
     const W = this.W, H = this.H;
     const sw = m.w || 1280, sh = m.h || 720;
-    const T = computeTransform(c, lt, W, H, sw, sh);
+    const T = computeTransform(c, lt, W, H, sw, sh, xf, t);
     {
       // zona que ocupa en pantalla (para tocar y para el recuadro de selección)
       const cr = c.crop, cw = 1 - cr.l - cr.r, chh = 1 - cr.t - cr.b;
@@ -513,13 +559,14 @@ export class Renderer {
     gl.clearColor(bg[0], bg[1], bg[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     this.bounds = new Map();
-    const vis = project.clips.filter((c) => (c.type === 'video' || c.type === 'image') && t >= c.start - 1e-6 && t < c.start + c.dur);
+    const xf = xfadeAt(project, t);
+    const vis = project.clips.filter((c) => (c.type === 'video' || c.type === 'image') && ((t >= c.start - 1e-6 && t < c.start + c.dur) || xf.has(c.id)));
     const order = { video: 0, overlay: 1 };
     vis.sort((a, b) => order[a.lane] - order[b.lane] || a.start - b.start);
     for (const c of vis) {
       const m = media.get(c.media);
       if (!m) continue;
-      this.drawLayer(c, t - c.start, t, m, c.type === 'video' ? videoFor(c) : null);
+      this.drawLayer(c, t - c.start, t, m, c.type === 'video' ? videoFor(c) : null, xf.get(c.id));
     }
     // texto y partículas
     const ov = overlay.draw(project, t, W, H);
