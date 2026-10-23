@@ -1,4 +1,5 @@
 import { gainAt, hasKf } from './kf.js';
+import { extractAacTrack, trimStart } from './audioextract.js';
 // Motor de audio: decodifica el audio de vídeos/audios y programa la reproducción mezclada.
 export class AudioEngine {
   constructor() {
@@ -49,30 +50,43 @@ export class AudioEngine {
   async decode(media) {
     const ctx = this.init();
     if (!ctx || media.kind === 'image') return null;
-    if (media.blob.size > 450 * 1024 * 1024) { media.audioFallback = media.kind === 'video'; return null; }
-    try {
-      const ab = await media.blob.arrayBuffer();
-      const buf = await ctx.decodeAudioData(ab);
-      media.buffer = buf;
-      // picos para dibujar la onda (40 por segundo)
-      const ch = buf.getChannelData(0);
-      const n = Math.max(1, Math.ceil(buf.duration * 40));
-      const step = Math.max(1, Math.floor(ch.length / n));
-      const peaks = new Float32Array(n);
-      for (let i = 0; i < n; i++) {
-        let m = 0;
-        const s = i * step, e = Math.min(ch.length, s + step);
-        for (let j = s; j < e; j += Math.max(1, Math.floor(step / 24))) { const v = Math.abs(ch[j]); if (v > m) m = v; }
-        peaks[i] = m;
-      }
-      media.peaks = peaks;
-      return buf;
-    } catch (e) {
+    media.audioFallback = false;
+    let buf = null;
+    const name = (media.name || '').toLowerCase();
+    const type = media.blob.type || '';
+    const isMp4 = /\.(mp4|mov|m4v|m4a|3gp)$/.test(name) || /mp4|quicktime|m4a|3gpp/.test(type);
+    // 1) MP4/MOV (iPhone, iPad…): se saca solo la pista de sonido. Rápido y gasta poca memoria.
+    if (isMp4) {
+      try {
+        const r = await extractAacTrack(media.blob);
+        if (r && r.noAudio) { media.buffer = null; media.peaks = null; return null; }
+        if (r && r.adts) buf = trimStart(ctx, await ctx.decodeAudioData(r.adts), r.skip);
+      } catch (e) { console.warn('Extracción AAC falló', e); buf = null; }
+    }
+    // 2) Decodificación directa del archivo completo
+    if (!buf && media.blob.size <= 450 * 1024 * 1024) {
+      try { buf = await ctx.decodeAudioData(await media.blob.arrayBuffer()); } catch (e) { buf = null; }
+    }
+    if (!buf) {
       media.buffer = null;
-      // si el navegador no sabe separar el sonido, el vídeo sonará directamente (sin mezclar)
+      // si no se pudo separar el sonido, el vídeo sonará directamente (sin mezclar)
       media.audioFallback = media.kind === 'video';
       return null;
     }
+    media.buffer = buf;
+    // picos para dibujar la onda (40 por segundo)
+    const ch = buf.getChannelData(0);
+    const n = Math.max(1, Math.ceil(buf.duration * 40));
+    const step = Math.max(1, Math.floor(ch.length / n));
+    const peaks = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let m = 0;
+      const s0 = i * step, e = Math.min(ch.length, s0 + step);
+      for (let jj = s0; jj < e; jj += Math.max(1, Math.floor(step / 24))) { const v = Math.abs(ch[jj]); if (v > m) m = v; }
+      peaks[i] = m;
+    }
+    media.peaks = peaks;
+    return buf;
   }
 
   stop() {

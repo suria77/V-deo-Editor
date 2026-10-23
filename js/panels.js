@@ -322,7 +322,7 @@ export class Panels {
       const show = (v) => { out.textContent = fmt ? fmt(v) : fmtNum(v, step); };
       const sync = () => {
         const lt = ltNow(), v = valueAt(c, path, lt);
-        if (document.activeElement !== inp) inp.value = v;
+        if (!inp._drag) inp.value = v;
         show(v);
         kb.className = 'kfd' + (kfAt(c, path, lt) ? ' on' : hasKf(c, path) ? ' has' : '');
       };
@@ -333,7 +333,10 @@ export class Panels {
         kb.className = 'kfd' + (kfAt(c, path, ltNow()) ? ' on' : hasKf(c, path) ? ' has' : '');
         live();
       });
-      inp.addEventListener('change', () => { done(); onCommit && onCommit(); bus.emit('kf'); });
+      inp.addEventListener('pointerdown', () => { inp._drag = true; });
+      const rel = () => { inp._drag = false; };
+      inp.addEventListener('pointerup', rel); inp.addEventListener('pointercancel', rel); inp.addEventListener('blur', rel);
+      inp.addEventListener('change', () => { inp._drag = false; done(); onCommit && onCommit(); bus.emit('kf'); });
       inp.addEventListener('dblclick', () => {
         const def = min < 0 ? 0 : (min <= 1 && max >= 1 ? 1 : min);
         setValue(c, path, ltNow(), def); sync(); live(); done(); onCommit && onCommit();

@@ -27,11 +27,12 @@ export const subClips = () => state.project.clips.filter(isSub).sort((a, b) => a
 
 // ------------------------------------------------------------------ audio
 function audioSources() {
-  return state.project.clips.filter((c) => c.type === 'audio' || (c.type === 'video' && !c.muted));
+  return state.project.clips.filter((c) => c.type === 'audio' || c.type === 'video');
 }
 
 async function mixMono16k(app, ids) {
-  const clips = state.project.clips.filter((c) => ids.has(c.id));
+  // se escucha la voz tal cual (aunque el clip esté silenciado o con keyframes de volumen)
+  const clips = state.project.clips.filter((c) => ids.has(c.id)).map((c) => ({ ...c, muted: false, volume: 1, kf: null, afadeIn: 0, afadeOut: 0 }));
   const sub = { ...state.project, clips };
   const end = Math.max(...clips.map((c) => c.start + c.dur));
   const buf = await app.audio.renderOffline(sub, state.media, end, 16000);
@@ -196,14 +197,26 @@ export function retext(c, text) {
 }
 
 // ------------------------------------------------------------------ UI
-export function openSubtitles(app) {
-  const srcs = audioSources().filter((c) => state.media.get(c.media) && state.media.get(c.media).buffer);
-  if (!srcs.length) {
+export async function openSubtitles(app) {
+  const all = audioSources().filter((c) => state.media.get(c.media));
+  if (!all.length) {
     openModal([h('h2', {}, '💬 Subtítulos automáticos'), h('p', { class: 'sub' }, 'Primero añade a la línea de tiempo un vídeo con voz o una locución. Los subtítulos se crean a partir de ese audio.'), h('button', { class: 'btn block', onclick: closeModal }, 'Entendido')]);
     return;
   }
+  // si algún vídeo aún no tiene el sonido preparado, se intenta leer ahora
+  const pending = [...new Set(all.map((c) => state.media.get(c.media)).filter((m) => !m.buffer))];
+  if (pending.length) {
+    openModal([h('h2', {}, '💬 Subtítulos automáticos'), h('p', { class: 'sub' }, 'Preparando el sonido de tus vídeos…')], { dismissable: false });
+    for (const m of pending) { try { await app.audio.decode(m); } catch (e) { /* */ } }
+    closeModal();
+  }
+  const srcs = all.filter((c) => state.media.get(c.media).buffer);
+  if (!srcs.length) {
+    openModal([h('h2', {}, '💬 Subtítulos automáticos'), h('p', { class: 'sub' }, 'No he podido leer el sonido de los vídeos que hay en la línea de tiempo. Puede que el vídeo no tenga audio o que esté en un formato que el navegador no sabe abrir. Prueba a exportarlo desde Fotos como MP4 o a grabar la voz con «Grabar voz».'), h('button', { class: 'btn block', onclick: closeModal }, 'Entendido')]);
+    return;
+  }
   const cfg = { model: 'base', lang: 'spanish', style: 'kar', words: 4, pos: 0.55, replace: true };
-  const chosen = new Set(srcs.filter((c) => c.type === 'video' || c.lane === 'audio').map((c) => c.id));
+  const chosen = new Set(srcs.map((c) => c.id));
   const exist = subClips().length;
 
   const body = h('div', {});

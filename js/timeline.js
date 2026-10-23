@@ -142,7 +142,16 @@ export class Timeline {
     for (const t of kfTimes(c)) {
       if (t < -1e-3 || t > c.dur + 1e-3) continue;
       const d = h('i', { class: 'kfm', style: `left:${t * this.pps}px` });
-      d.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); if (!state.sel.has(c.id)) select(c.id); this.app.seek(c.start + t); });
+      d.addEventListener('pointerdown', (e) => {
+        e.stopPropagation(); e.preventDefault();
+        const x0 = e.clientX;
+        try { d.setPointerCapture(e.pointerId); } catch (er) { /* */ }
+        const up = (ev) => {
+          d.removeEventListener('pointerup', up); d.removeEventListener('pointercancel', up);
+          if (ev.type === 'pointerup' && Math.abs(ev.clientX - x0) < 8) { if (!state.sel.has(c.id)) select(c.id); this.app.seek(c.start + t); }
+        };
+        d.addEventListener('pointerup', up); d.addEventListener('pointercancel', up);
+      });
       el.append(d);
     }
   }

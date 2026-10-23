@@ -51,12 +51,21 @@
     </section>
 
     <aside class="panel" id="panel">
-      <div class="panel-head"><b id="panelTitle">Medios</b><button class="icon-btn flat sm" id="panelClose" aria-label="Cerrar panel">✕</button></div>
+      <div class="rz rz-panel" id="rzPanel" title="Arrastra para cambiar el ancho"></div>
+      <div class="panel-head" id="panelHead"><b id="panelTitle">Medios</b>
+        <div class="mini-tr">
+          <button class="icon-btn flat sm" id="mBack" aria-label="Retroceder">⏪</button>
+          <button class="icon-btn sm" id="mPlay" aria-label="Reproducir">▶</button>
+          <button class="icon-btn flat sm" id="mFwd" aria-label="Avanzar">⏩</button>
+          <span class="mini-tc" id="mTc">0:00.0</span>
+        </div>
+        <button class="icon-btn flat sm" id="panelClose" aria-label="Cerrar panel">✕</button></div>
       <div class="tab-body" id="tabBody"></div>
     </aside>
   </main>
 
   <section class="tl" id="tl">
+    <div class="rz rz-tl" id="rzTl" title="Arrastra para hacer más grande o más pequeña la línea de tiempo"><i></i></div>
     <div class="tl-bar">
       <button class="tbtn" id="tSplit"><i>✂</i><span>Dividir</span></button>
       <button class="tbtn" id="tDup"><i>⧉</i><span>Duplicar</span></button>

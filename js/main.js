@@ -14,6 +14,7 @@ import { saveProject, loadSaved, clearSaved } from './storage.js';
 import { ASPECTS } from './presets.js';
 import { h, fmtTime, toast, openModal, closeModal } from './ui.js';
 import { openSubtitles, openSubEditor, subClips } from './subs.js';
+import { icon } from './icons.js';
 import { valueAt, setValue, gainAt, toggleAllKf, anyKfAt } from './kf.js';
 
 const $ = (id) => document.getElementById(id);
@@ -82,7 +83,7 @@ function cleanupVideos() {
 // Vídeos cuyo sonido no se pudo extraer: suenan por el propio elemento <video>
 function elementAudio(c, v, active, t) {
   const m = state.media.get(c.media);
-  const want = !!(m && m.audioFallback && !m.buffer && !c.muted && active && state.playing);
+  const want = !!(m && m.audioFallback && !m.buffer && !c.muted && active && state.playing && !v._blocked);
   if (want) {
     const vol = Math.max(0, Math.min(1, gainAt(c, t - c.start)));
     if (v.muted) v.muted = false;
@@ -102,7 +103,7 @@ function syncVideos(t) {
       const rate = Math.min(4, Math.max(0.25, c.speed));
       if (v.playbackRate !== rate) v.playbackRate = rate;
       if (state.playing) {
-        if (v.paused) { if (Math.abs(v.currentTime - target) > 0.05) v.currentTime = target; v.play().catch(() => { if (!v.muted) { v.muted = true; v.play().catch(() => {}); } }); }
+        if (v.paused) { if (Math.abs(v.currentTime - target) > 0.05) v.currentTime = target; v.play().catch(() => { if (!v.muted) { v._blocked = true; v.muted = true; v.play().catch(() => {}); } }); }
         else if (Math.abs(v.currentTime - target) > 0.3) v.currentTime = target;
       } else {
         if (!v.paused) v.pause();
@@ -169,6 +170,7 @@ function play(from = state.time, stopAt = null) {
     const m = state.media.get(c.media);
     if (!m || !m.audioFallback || c.muted) continue;
     const v = videoFor(c);
+    if (v) v._blocked = false;
     if (v && v.paused && !(from >= c.start && from < c.start + c.dur)) { v.muted = false; v.play().then(() => { if (!(state.time >= c.start && state.time < c.start + c.dur)) v.pause(); }).catch(() => {}); }
   }
   state.time = from;
@@ -711,6 +713,66 @@ function refreshKfBtn() {
 }
 bus.on('time', refreshKfBtn); bus.on('select', refreshKfBtn); bus.on('kf', refreshKfBtn);
 $('tDel').onclick = () => { const ids = targetIds(); if (ids.length) removeClips(ids); else toast('Selecciona un clip'); };
+
+// ---- tiradores: tamaño de la línea de tiempo, del panel y de la hoja ----
+(function resizers() {
+  const root = $('app');
+  const store = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* */ } };
+  const load = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const setVar = (n, px) => root.style.setProperty(n, Math.round(px) + 'px');
+  const drag = (el, onMove, key, onEnd) => {
+    el.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button')) return;
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      el.classList.add('drag'); document.body.classList.add('resizing');
+      const start = { x: e.clientX, y: e.clientY };
+      const mv = (ev) => onMove(ev, start);
+      const up = () => {
+        el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
+        el.classList.remove('drag'); document.body.classList.remove('resizing');
+        onEnd && onEnd();
+      };
+      el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    });
+  };
+  // línea de tiempo (arriba/abajo)
+  let tlStart = 0;
+  $('rzTl').addEventListener('pointerdown', () => { tlStart = $('tl').getBoundingClientRect().height; }, true);
+  drag($('rzTl'), (ev, s) => {
+    const max = window.innerHeight - 230, h = Math.max(120, Math.min(max, tlStart - (ev.clientY - s.y)));
+    setVar('--tl-h', h);
+  }, 'tlh', () => { store('tlh', $('tl').getBoundingClientRect().height); timeline.render(); });
+  $('rzTl').addEventListener('dblclick', () => { root.style.removeProperty('--tl-h'); store('tlh', ''); });
+  // panel lateral (izquierda/derecha)
+  let pw0 = 0;
+  $('rzPanel').addEventListener('pointerdown', () => { pw0 = $('panel').getBoundingClientRect().width; }, true);
+  drag($('rzPanel'), (ev, s) => {
+    const w = Math.max(300, Math.min(Math.min(760, window.innerWidth - 380), pw0 - (ev.clientX - s.x)));
+    setVar('--panel-w', w);
+  }, 'pw', () => store('pw', $('panel').getBoundingClientRect().width));
+  // hoja del panel en iPad vertical (arrastrando su cabecera)
+  let sh0 = 0;
+  $('panelHead').addEventListener('pointerdown', () => { sh0 = $('panel').getBoundingClientRect().height; }, true);
+  drag($('panelHead'), (ev, s) => {
+    if (window.innerWidth >= 1000) return;
+    const hgt = Math.max(180, Math.min(window.innerHeight - 140, sh0 - (ev.clientY - s.y)));
+    setVar('--sheet-h', hgt);
+  }, 'sh', () => { if (window.innerWidth < 1000) store('sh', $('panel').getBoundingClientRect().height); });
+  const t = +load('tlh'), p = +load('pw'), sh = +load('sh');
+  if (t > 100 && t < window.innerHeight - 200) setVar('--tl-h', t);
+  if (p >= 300) setVar('--panel-w', p);
+  if (sh >= 180 && sh < window.innerHeight - 100) setVar('--sheet-h', sh);
+})();
+
+// ---- mini reproductor dentro del panel (iPad vertical) ----
+$('mBack').replaceChildren(icon('prev', 22)); $('mFwd').replaceChildren(icon('next', 22));
+$('mPlay').onclick = () => { state.playing ? pause() : play(); };
+$('mBack').onclick = () => seek(state.time - 0.5);
+$('mFwd').onclick = () => seek(state.time + 0.5);
+const syncMini = () => { $('mTc').textContent = fmtTime(state.time); $('mPlay').textContent = state.playing ? '❚❚' : '▶'; };
+bus.on('time', syncMini);
+setInterval(syncMini, 400);
 
 // ---- modo selección múltiple ----
 function refreshSelUI() {
