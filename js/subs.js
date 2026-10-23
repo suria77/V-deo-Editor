@@ -311,7 +311,7 @@ export async function openSubtitles(app) {
     openModal([h('h2', {}, '💬 Subtítulos automáticos'), h('p', { class: 'sub' }, 'No he podido leer el sonido de los vídeos que hay en la línea de tiempo. Puede que el vídeo no tenga audio o que esté en un formato que el navegador no sabe abrir. Prueba a exportarlo desde Fotos como MP4 o a grabar la voz con «Grabar voz».'), h('button', { class: 'btn block', onclick: closeModal }, 'Entendido')]);
     return;
   }
-  const cfg = { engine: 'el', model: IS_IOS ? 'tiny' : 'base', lang: 'spanish', style: 'kar', words: 4, pos: 0.55, replace: true };
+  const cfg = { engine: 'local', model: 'base', lang: 'spanish', style: 'kar', words: 4, pos: 0.55, replace: true };
   const chosen = new Set(srcs.map((c) => c.id));
   const exist = subClips().length;
 
@@ -323,7 +323,7 @@ export async function openSubtitles(app) {
   };
   body.append(
     h('h2', {}, '💬 Subtítulos automáticos'),
-    h('p', { class: 'sub' }, 'Con ElevenLabs solo se envía el sonido (no el vídeo) y las palabras quedan sincronizadas al milisegundo. «En el dispositivo» es gratis pero menos preciso y más lento.'),
+    h('p', { class: 'sub' }, 'La voz se convierte en texto en tu propio dispositivo, gratis. La primera vez descarga el modelo de reconocimiento (solo una vez).'),
     h('h4', {}, 'Qué audio escuchar'),
   );
   const list = h('div', { class: 'src-list' });
@@ -345,10 +345,10 @@ export async function openSubtitles(app) {
   const localModels = MODELS.filter((m) => !(IS_IOS && m.id === 'small'));
   const localBox = h('div', {},
     pill(localModels.map((m) => [m.id, m.n]), 'model'),
-    h('p', { class: 'hint' }, IS_IOS ? 'En iPad usa «Rápido» o «Equilibrado»: los modelos grandes pueden llenar la memoria y cerrar la página. Es menos preciso que ElevenLabs.' : 'Rápido ≈ tiny · Equilibrado ≈ base · Preciso ≈ small. Es menos preciso que ElevenLabs.'));
+    h('p', { class: 'hint' }, IS_IOS ? '«Equilibrado» es el recomendado. Si el iPad va justo de memoria, usa «Rápido».' : 'Rápido ≈ tiny · Equilibrado ≈ base · Preciso ≈ small. Cuanto más preciso, más tarda.'));
   const showEngine = () => { elBox.hidden = cfg.engine !== 'el'; localBox.hidden = cfg.engine !== 'local'; };
   const engRow = h('div', { class: 'chips' });
-  [['el', '🎯 ElevenLabs (máxima precisión)'], ['local', '📱 En el dispositivo (gratis)']].forEach(([v, lab]) => {
+  [['local', '📱 En el dispositivo (gratis)'], ['el', '🎯 ElevenLabs (gasta créditos)']].forEach(([v, lab]) => {
     engRow.append(h('button', { class: cfg.engine === v ? 'on' : '', onclick: (e) => { cfg.engine = v; [...engRow.children].forEach((b) => b.classList.remove('on')); e.currentTarget.classList.add('on'); showEngine(); } }, lab));
   });
   engRow.style.gridTemplateColumns = '1fr 1fr';
