@@ -535,19 +535,25 @@ export function drawText(ctx, c, lt, W, H) {
   const lh = px * c.lineHeight;
   const lines = layoutText(ctx, c, px, W);
   const glyphs = [];
-  let maxLW = 0;
+  let maxLW = 0, wordBase = 0;
   lines.forEach((line, li) => {
+    let wk = 0;
     const lw = ctx.measureText(line).width + sp * Math.max(0, line.length - 1);
     maxLW = Math.max(maxLW, lw);
     const startX = c.align === 'left' ? -c.width * W / 2 : c.align === 'right' ? c.width * W / 2 - lw : -lw / 2;
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
-      if (ch === ' ') continue;
-      glyphs.push({ ch, x: startX + ctx.measureText(line.slice(0, i)).width + i * sp, w: ctx.measureText(ch).width, y: (li - (lines.length - 1) / 2) * lh });
+      if (ch === ' ') { wk++; continue; }
+      glyphs.push({ wi: wordBase + wk, ch, x: startX + ctx.measureText(line.slice(0, i)).width + i * sp, w: ctx.measureText(ch).width, y: (li - (lines.length - 1) / 2) * lh });
     }
+    if (line.trim()) wordBase += wk + 1;
   });
   const n = glyphs.length;
   if (!n) return false;
+  let kActive = -1;
+  if (c.karaoke && c.words && c.words.length) {
+    for (let i = 0; i < c.words.length; i++) { if (lt >= c.words[i].s - 0.02) kActive = i; else break; }
+  }
   const inA = c.inAnim, outA = c.outAnim, lp = c.loop;
   const pIn = inA.type === 'none' ? 1 : clamp(lt / Math.max(0.05, inA.dur), 0, 1);
   const qOut = outA.type === 'none' ? 1 : clamp((c.dur - lt) / Math.max(0.05, outA.dur), 0, 1);
@@ -612,9 +618,12 @@ export function drawText(ctx, c, lt, W, H) {
     ctx.save();
     ctx.translate(g.x + g.w / 2 + gdx, g.y + gdy);
     ctx.scale(gs, gs);
+    if (kActive >= 0 && g.wi === kActive) ctx.scale(1.07, 1.07);
     ctx.globalAlpha = clamp(a, 0, 1);
     let fill = c.color;
+    const kOn = kActive >= 0 && g.wi === kActive;
     if (lp.type === 'rainbow') fill = `hsl(${(gi * 24 + lt * 200 * A) % 360},90%,62%)`;
+    else if (kOn) fill = c.karaoke.color || '#ffd23f';
     else if (c.color2) { const gr = ctx.createLinearGradient(0, -px * 0.5, 0, px * 0.5); gr.addColorStop(0, c.color); gr.addColorStop(1, c.color2); fill = gr; }
     const sb = c.shadow.blur * px * 0.4 * glowMul;
     const hasStroke = c.stroke.w > 0;

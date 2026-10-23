@@ -67,6 +67,9 @@ export class Panels {
   textTab() {
     const b = this.body;
     b.append(h('h3', {}, 'Texto'));
+    b.append(h('button', { class: 'btn plum block', style: 'margin-bottom:10px', onclick: () => this.app.openSubtitles() }, '💬 Subtítulos automáticos'));
+    const n = this.app.subCount ? this.app.subCount() : 0;
+    if (n) b.append(h('button', { class: 'btn block', style: 'margin-bottom:10px', onclick: () => this.app.openSubEditor() }, `✏️ Revisar subtítulos (${n})`));
     b.append(h('button', { class: 'btn gold block', onclick: () => this.app.addText({}) }, '+ Añadir texto'));
     b.append(h('p', { class: 'hint', style: 'margin-top:14px' }, 'O elige un estilo ya preparado (con su animación):'));
     const g = h('div', { class: 'grid' });

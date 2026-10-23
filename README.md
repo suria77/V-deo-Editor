@@ -17,3 +17,8 @@ Editor de vídeo web (uso personal de Dharmaeterno) pensado para Shorts/Reels, q
 
 ## Publicación
 Es un sitio estático: no hay que compilar nada. Se publica en Cloudflare Pages con la raíz del repositorio como carpeta de salida.
+
+## Novedades
+- **Selección múltiple**: botón «Seleccionar» en la línea de tiempo (tocar clips, recuadro arrastrando, «Todo», «Desde el cabezal», «Toda la pista»). Mover, duplicar, dividir, borrar y editar ajustes de varios clips a la vez.
+- **Luces y estrellas** (Efectos): Brillo radiante, Constelación, Luces de invierno, Estelar, Reflector celestial y Fragmentos de estrella.
+- **Subtítulos automáticos** (pestaña Texto): reconocimiento de voz Whisper en el propio navegador (transformers.js desde jsDelivr; la primera vez descarga el modelo), palabras resaltadas tipo karaoke, editor de revisión, importar/guardar .srt.

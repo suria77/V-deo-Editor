@@ -241,3 +241,22 @@ input[type=color] { width: 56px; height: 46px; border: 1px solid var(--line); bo
 .clip.prim { box-shadow: 0 0 0 3px var(--gold), 0 4px 14px rgba(200, 146, 26, .6); }
 .clip.sel::after { content: '✓'; position: absolute; right: 30px; top: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--plum); color: #fff; font-size: 12px; display: grid; place-items: center; z-index: 3; pointer-events: none; }
 @media (max-width: 700px) { .sel-tip { display: none; } }
+
+/* ---- Subtítulos ---- */
+.btn.plum { background: linear-gradient(135deg, #5b2a86, #8a3fa8); color: #fff; border-color: transparent; }
+.btn.ghost { background: transparent; margin-top: 8px; }
+.sheet h4 { margin: 16px 0 4px; font-size: 15px; color: var(--ink2); text-transform: uppercase; letter-spacing: .04em; }
+.src-list { display: grid; gap: 6px; margin: 6px 0; }
+.src-row { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; font-size: 15.5px; min-height: 48px; }
+.src-row input { width: 22px; height: 22px; accent-color: var(--plum); flex: none; }
+.sub-status { margin-top: 14px; padding: 12px; background: #f4ebff; border-radius: 14px; }
+.sub-status p { margin: 0 0 8px; font-size: 15px; line-height: 1.4; }
+.sub-bar { height: 10px; background: #e3d5f4; border-radius: 99px; overflow: hidden; }
+.sub-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7d3fb0, #e6a92c); transition: width .3s; }
+.sub-list { display: grid; gap: 8px; margin: 10px 0; max-height: 46dvh; overflow-y: auto; padding-right: 2px; }
+.sub-row { display: grid; grid-template-columns: 74px 1fr 46px; gap: 8px; align-items: start; }
+.sub-t { display: grid; gap: 6px; justify-items: start; font-size: 14px; }
+.sub-row textarea { width: 100%; font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); resize: vertical; min-height: 56px; }
+.sub-row .mini { min-width: 44px; min-height: 44px; border-radius: 12px; border: 1px solid var(--line); background: #fff; font-size: 17px; }
+.sub-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.sub-acts .btn { flex: 1 1 140px; min-height: 48px; }

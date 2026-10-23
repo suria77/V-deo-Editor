@@ -13,6 +13,7 @@ import { startRecorder, pickMime, offlineConfig, exportOffline } from './exporte
 import { saveProject, loadSaved, clearSaved } from './storage.js';
 import { ASPECTS } from './presets.js';
 import { h, fmtTime, toast, openModal, closeModal } from './ui.js';
+import { openSubtitles, openSubEditor, subClips } from './subs.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('cv');
@@ -606,6 +607,7 @@ function updateUndo() {
 
 // ---------- app compartida con paneles/timeline ----------
 const app = {
+  audio, pause, openSubtitles: () => openSubtitles(app), openSubEditor: () => openSubEditor(app), subCount: () => subClips().length,
   seek, pickFiles, addMediaToTimeline: (m) => addMediaToTimeline(m), addText, addFx, recordVoice, openProject,
   changed: () => { dirty = true; },
   audioChanged: () => { if (state.playing) audio.schedule(state.project, state.media, state.time); },
