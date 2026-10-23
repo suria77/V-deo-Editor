@@ -1,4 +1,4 @@
-# Atelier de Vídeo
+# Lumière
 
 Editor de vídeo web (uso personal de Dharmaeterno) pensado para Shorts/Reels, que funciona en el navegador del iPad (Safari) y del ordenador. No necesita servidor: todo se procesa en el propio dispositivo.
 

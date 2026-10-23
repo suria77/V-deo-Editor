@@ -1,6 +1,6 @@
 {
-  "name": "Atelier de Vídeo",
-  "short_name": "Atelier",
+  "name": "Lumière",
+  "short_name": "Lumière",
   "start_url": "./",
   "display": "standalone",
   "orientation": "any",
