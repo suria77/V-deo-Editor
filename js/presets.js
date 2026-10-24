@@ -275,6 +275,7 @@ export const PARTICLES = [
   { id: 'violeta', n: 'Bokeh violeta', i: '🟣', cat: 'luz', add: true, color: '#a046d8', size: 1, speed: 1, intensity: 0.8 },
   { id: 'petalosRosa', n: 'Pétalos de rosa', i: '🌹', cat: 'luz', add: false, color: '#e8707e', size: 1, speed: 1, intensity: 0.8 },
   { id: 'polvoLuz', n: 'Polvo de luz', i: '🤍', cat: 'luz', add: true, color: '#fff2e0', size: 1, speed: 1, intensity: 0.8 },
+  { id: 'particulas', n: 'Partículas', i: '✨', cat: 'luz', add: true, color: '#e4f8ec', size: 1, speed: 1, intensity: 0.8 },
   { id: 'atardecer', n: 'Atardecer estelar', i: '🌇', cat: 'luz', add: true, color: '#ff9e78', size: 1, speed: 1, intensity: 0.8 },
   // --- ambiente ---
   { id: 'fire', n: 'Fuego', i: '🔥', add: true, color: '#ff7a1a', size: 1, speed: 1, intensity: 0.7 },

@@ -144,6 +144,55 @@ function starPoly(ctx, x, y, n, ro, ri, rot) {
   ctx.closePath();
 }
 
+
+// ---- «Partículas»: recreado a partir del vídeo de muestra (análisis fotograma a fotograma) ----
+// Fondo: mapa de color medido en la muestra (24×21, mediana temporal sin partículas), ciruela con luz cálida abajo a la izquierda.
+const PART_HAZE = 'PholPholPRolPRklPBkkORciNxYiNxUiNxQhNhMhNRIhNhIjNRAiMQ4gLgweKwocKQgbJwcaJwcaJwYaJQYaIwcZIwcZIwcZQBwnQBwnQBsnPxsmPRolOxkkORgjOBcjOBUiNxQiNhMiNhMjNREjMQ8hLw0gLAseKQkcJwgbJwcbKAcbJgcbJQcaJAcaJQcaRh8rRR8rRB4qQx4pQR0oPxwnPRomOxklOxglORckOBYkNxUkNRMkMxEjMQ8iLg4hKgseKQoeKQkeKQkdJwgdJwkcJwgcKAgdTCIvSyIuSiEuSCAsRR8rQx4qQB0oPhwnPRsnPBonOhkmORgmOBYnNxUnNRMmMREkLQ4iLQ0iLQwhKwsgKQofKAoeKQofKgofUiYzUSUyUCUyTSQwSSIuRiEsQh8rQB4qPx0pPhwpPBspPBoqOxkqOhgqORcqNhQoMhImMBAlLw8kLQ4jKwwhKgwgLAwhLQwiVyk2Vik2VCg1UScyTiUxSyQvRyIuRCEtQyAsQR8sQB4sPx0tPhwtPRstOxktORgsNhUqMxMoMRImMBEmLg8kLA4jLQ4jLg4kXCw5Wyw4WSs3Vik1UigzTycyTCUxSSQwSCMwRiIvRCEvQiAvQB8vPh0vPBsuOhotNxgrNBYqMhUpMhMoMRInLxEmLhAlLhEmYzA7YTA7Xi45Wiw4Vyo2Uyk0TygzTScySyUySSQySCQyRyMyRCEyQR8xPR4wOxwvOBotNhksNhgsNRYrNBUqMhQpMRQoMhQpaDQ9ZzM8YzE7Xi86Wi04Vyw3Uyo2UCk1Tig1TCc1SyY0SSU1RyQ1RCI0QSAzPh4xOxwwORsvOBouNxkuNxgtNhcsNxctOBgtbzg/bTc/aDU+YzI8XzA7XC46WC05VSw4Uis4Tyk3TSg3Syc3SiY3RyQ3RCI2QiE0Px8zPB0xOxwxORswORovORkvOhkvOhkvdjxCdDtCbzhBajZAZTQ+YjI9XjA8Wy88Vy07Uyw6UCo5TSk4Syg5SCY4RiQ4RSM3QiE2Px80PR4zPB0yOxwxPBsxPBsxOxoxfkJGe0BFdj1EcDpDbDhCaDZAZTQ/YTI/XDA+Vy48Uyw7UCs7Tio7Syg7SSc6SCU6RiQ5QiI3PyA1PR40PB0zPR4zPx80Px40hUdKgkVJfUJHdz5FczxEbzpDajdCZTVBYTNAXDE/WC8+VS4+Ui0+Tys+TCk9Sic8SCY7RSQ5QCE3PB80Ox8zPiE1QSM4QCI3i0xNiEpMg0dKfkNIeUBGdD1GbzpFaThDZDZCYDNBXDFBWDBAVC5AUSxATio/Syg+SSc9RyU7QiM5PSE2OiA0OyE1PSI2PCE2kFFQjk9PiUtNg0hKfkRJekFIdD5HbTtFaDhEYzZDXzRDWjJCVjBBUi5BTyxATCo/SSg9Ryc8RCU6PyQ4PCI2OyE1OyE2OyE2lVdUk1VTjlFQiU1OhElMfkRKeEFJcj1IbDpHZzhGYjVFXTREWTJEVTBDUi5CTixBSyo/SSg9Ric8QiY6QCU5PiQ4PyQ4QCQ5ml9ZmFxXk1dUjlJRiE1OgkhMfENMdkBKcD1JazpIZThHYDVGXDRGWTJGVTBFUi5DTixBSyo/SCg+Ric8RCc8QiY7QyY7RSY8n2hgnGRdmF5ZkldVjFFRhUtOf0ZNekNNdEBMbj1KaDpJYzhIXzZIXDRIWTJHVTBGUS9ETS1CSitASSo/SCk+Rig+Rig+Ryg+o3FnoG1knGRel11ZkVZUilBRhEpPfkZPekNOdEBNbTxLZzpKZDlKYDdJXDRIWTNIVTFHUS9ETi1CTSxCSytBSipASSpASCk/pnpvpHRroGtkm2JelVpZjlRUiE5SgklRfkVQeEJPcT9NazxLZztLYjlKXjZJWzVJWDNIVDFGUS9FUC5ETi1DTSxCSytCSitBp31xpXdtoW5nnGVgll1akFZWiVBThEtSf0dReUNQckBObT1MaTxMYzpLXzdKXDZKWTRJVTJHUzBGUS9FTy5ETS1DTCxDSyxC';
+let partHazeCv = null;
+function partHaze() {
+  if (partHazeCv) return partHazeCv;
+  const b = atob(PART_HAZE), w = 24, h = 21;
+  partHazeCv = document.createElement('canvas'); partHazeCv.width = w; partHazeCv.height = h;
+  const g = partHazeCv.getContext('2d'), id = g.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) { id.data[i * 4] = b.charCodeAt(i * 3); id.data[i * 4 + 1] = b.charCodeAt(i * 3 + 1); id.data[i * 4 + 2] = b.charCodeAt(i * 3 + 2); id.data[i * 4 + 3] = 255; }
+  g.putImageData(id, 0, 0);
+  return partHazeCv;
+}
+// disco con interior plano y borde suave (perfil medido: meseta hasta ~45 % del radio y caída hasta 0)
+const pdiscCache = new Map();
+function pdiscSprite(rgb, ring) {
+  const key = rgb.join(',') + (ring ? 'r' : '');
+  let s = pdiscCache.get(key);
+  if (s) return s;
+  s = document.createElement('canvas'); s.width = s.height = 128;
+  const g = s.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  if (ring) { // desenfocado: centro algo más apagado y borde rosado
+    gr.addColorStop(0, css(rgb, 0.82)); gr.addColorStop(0.45, css(rgb, 0.92)); gr.addColorStop(0.62, css(mixRgb(rgb, [255, 150, 170], 0.35), 0.85));
+    gr.addColorStop(0.8, css(mixRgb(rgb, [255, 120, 150], 0.5), 0.3)); gr.addColorStop(1, css(rgb, 0));
+  } else {
+    gr.addColorStop(0, css(rgb, 1)); gr.addColorStop(0.42, css(rgb, 1)); gr.addColorStop(0.6, css(rgb, 0.72));
+    gr.addColorStop(0.78, css(rgb, 0.3)); gr.addColorStop(0.92, css(rgb, 0.07)); gr.addColorStop(1, css(rgb, 0));
+  }
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  pdiscCache.set(key, s);
+  return s;
+}
+function pdisc(ctx, rgb, x, y, R, a, ring) {
+  if (a <= 0.003 || R < 0.5) return;
+  ctx.globalAlpha = clamp(a, 0, 1);
+  ctx.drawImage(pdiscSprite(rgb, ring), x - R, y - R, R * 2, R * 2);
+}
+let partNoiseCv = null;
+function partNoise() { // textura moteada (grano grueso de película), generada una vez
+  if (partNoiseCv) return partNoiseCv;
+  const w = 64, h = 64; partNoiseCv = document.createElement('canvas'); partNoiseCv.width = w; partNoiseCv.height = h;
+  const g = partNoiseCv.getContext('2d'), id = g.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) { const v = Math.floor(255 * Math.pow(Math.random(), 1.6)); id.data[i * 4] = v; id.data[i * 4 + 1] = v * 0.8; id.data[i * 4 + 2] = v * 0.9; id.data[i * 4 + 3] = 255; }
+  g.putImageData(id, 0, 0);
+  return partNoiseCv;
+}
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
 function particles(ctx, c, t, lt, W, H, g) {
   const id = c.fx, I = c.intensity, sp = c.speed, sz = c.size, seed = c.seed;
   const S = Math.min(W, H) / 1080;
@@ -693,6 +742,81 @@ function particles(ctx, c, t, lt, W, H, g) {
         const a = clamp(Math.sin(u * Math.PI) * 1.4, 0, 1) * g * Math.min(1, I * 1.25);
         blob(ctx, st, x, y, s * 4, s * 4, a * 0.35);
         disc(ctx, st, x, y, s, a * 0.95);
+      }
+      break;
+    }
+    case 'particulas': {
+      // Partículas: neblina ciruela con luz cálida en la esquina inferior izquierda; discos de luz que flotan
+      // hacia la derecha con un leve vaivén y se desenfocan al apagarse; motas lejanas lentas; algún destello con estela.
+      const lightC = base;                                   // luz de las partículas (sobre la neblina queda blanco rosado)
+      const pink = mixRgb(base, [255, 175, 195], 0.55);
+      const br = 0.97 + 0.03 * Math.sin(T * 2.1);             // la luz de la esquina «respira»
+      // 1) neblina medida en la muestra
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.globalAlpha = clamp(I * 1.25, 0, 1) * g * br;
+      ctx.drawImage(partHaze(), 0, 0, W, H);
+      { // grano moteado: se desplaza a saltos, como en película
+        const nz = partNoise(), fr = Math.floor(lt * 12), ox = rnd(fr, 791, seed) * 64, oy = rnd(fr, 792, seed) * 64, cell = 13 * S;
+        ctx.globalAlpha = 0.045 * clamp(I * 1.25, 0, 1) * g;
+        for (let yy = -oy * cell; yy < H; yy += 64 * cell) for (let xx = -ox * cell; xx < W; xx += 64 * cell) ctx.drawImage(nz, xx, yy, 64 * cell, 64 * cell);
+      }
+      // 2) polvo fino casi quieto
+      for (let i = 0; i < N(12); i++) {
+        const r1 = rnd(i, 701, seed), r2 = rnd(i, 702, seed), r3 = rnd(i, 703, seed);
+        const life = 3 + 3 * r1, q = T / life + r2, cy = Math.floor(q), u = fract(q);
+        const x = W * rnd(i, 704 + cy * 5, seed) + T * 6 * S * (r3 - 0.3), y = H * rnd(i, 705 + cy * 5, seed);
+        const a = Math.sin(u * Math.PI) * (0.12 + 0.1 * r3) * g;
+        pdisc(ctx, lightC, ((x % W) + W) % W, y, (2.5 + 2 * r3) * S * sz, a);
+      }
+      // 3) motas lejanas: pequeñas, nítidas, lentas
+      for (let i = 0; i < N(11); i++) {
+        const r1 = rnd(i, 711, seed), r2 = rnd(i, 712, seed);
+        const life = 1.3 + 1.7 * r1, q = T / life + r2, cy = Math.floor(q), u = fract(q);
+        const k = 713 + cy * 7;
+        const ang = (rnd(i, k, seed) < 0.8 ? 0.3 : Math.PI + 0.2) + (rnd(i, k + 1, seed) - 0.5) * 1.2;
+        const v = (22 + 34 * rnd(i, k + 2, seed)) * S * sp, el = u * life / sp;
+        const x = W * rnd(i, k + 3, seed) + Math.cos(ang) * v * el, y = H * rnd(i, k + 4, seed) + Math.sin(ang) * v * el;
+        const env = smooth(0, 0.12, u) * (1 - smooth(0.7, 1, u));
+        const tw = 0.85 + 0.15 * Math.sin(T * (3 + 4 * r1) + r2 * 30);
+        const R = (6.5 + 5 * rnd(i, k + 5, seed)) * S * sz;
+        pdisc(ctx, lightC, x, y, R, (0.34 + 0.16 * rnd(i, k + 6, seed)) * env * tw * g);
+      }
+      // 4) discos cercanos: se mueven más rápido y, al final de su vida, se desenfocan (crecen, se apagan y se vuelven rosados)
+      for (let i = 0; i < N(13); i++) {
+        const r1 = rnd(i, 721, seed), r2 = rnd(i, 722, seed);
+        const life = 0.75 + 0.95 * r1, q = T / life + r2, cy = Math.floor(q), u = fract(q);
+        const k = 723 + cy * 11;
+        const left = rnd(i, k, seed) > 0.82;
+        const ang = (left ? Math.PI + 0.35 : 0.28) + (rnd(i, k + 1, seed) - 0.5) * 0.9;
+        const v = (55 + 70 * rnd(i, k + 2, seed)) * S * sp, el = u * life / sp;
+        const wob = (4 + 7 * rnd(i, k + 3, seed)) * S, wf = 3.5 + 3 * rnd(i, k + 4, seed), ph = rnd(i, k + 5, seed) * 6.28;
+        const px = -Math.sin(ang), py = Math.cos(ang), w = Math.sin(el * wf + ph) * wob;
+        const x = W * (left ? 0.15 + 0.85 * rnd(i, k + 6, seed) : 0.85 * rnd(i, k + 6, seed)) + Math.cos(ang) * v * el + px * w;
+        const y = H * (0.05 + 0.9 * rnd(i, k + 7, seed)) + Math.sin(ang) * v * el + py * w;
+        const R0 = (17 + 12 * rnd(i, k + 8, seed)) * S * sz;
+        const fin = smooth(0.42, 1, u), inn = smooth(0, 0.07, u);
+        const a0 = (0.4 + 0.14 * rnd(i, k + 9, seed)) * inn * g;
+        const R = R0 * (1 + 0.55 * fin);
+        const tint = rnd(i, k + 10, seed) < 0.35 ? mixRgb(lightC, [205, 255, 220], 0.5) : lightC;
+        pdisc(ctx, tint, x, y, R, a0 * Math.pow(1 - fin, 1.4));
+        pdisc(ctx, pink, x, y, R, a0 * 0.55 * fin * (1 - fin) * 2.2, true);
+      }
+      // 5) destellos: núcleo caliente, halo anaranjado y estelas horizontales finas
+      for (let i = 0; i < N(2); i++) {
+        const r1 = rnd(i, 741, seed), r2 = rnd(i, 742, seed);
+        const life = 2.6 + 1.6 * r1, q = T / life + r2, cy = Math.floor(q), u = fract(q);
+        if (u > 0.6) continue;
+        const k = 743 + cy * 5;
+        const e = Math.pow(Math.sin(Math.PI * u / 0.6), 0.8) * g * Math.min(1, I * 1.25);
+        const x = W * (0.55 + 0.47 * rnd(i, k, seed)) + u * life * 10 * S, y = H * (0.05 + 0.6 * rnd(i, k + 1, seed));
+        const hot = mixRgb(base, [255, 250, 240], 0.6), amber = mixRgb(base, [255, 160, 90], 0.7);
+        blob(ctx, amber, x, y, 150 * S * sz, 150 * S * sz, 0.5 * e);
+        blob(ctx, amber, x, y, 70 * S * sz, 70 * S * sz, 0.45 * e);
+        for (const [dy, L, th, aa] of [[-3.2, 70, 1.6, 0.32], [0, 90, 2, 0.45], [3.4, 55, 1.4, 0.26]]) {
+          blob(ctx, hot, x - L * 0.25 * S, y + dy * S, L * S * sz, th * 2 * S, aa * e);
+        }
+        blob(ctx, hot, x, y, 50 * S * sz, 50 * S * sz, 0.8 * e);
+        pdisc(ctx, hot, x, y, 14 * S * sz, 0.75 * e);
       }
       break;
     }
@@ -1542,6 +1666,10 @@ export class Overlay {
 export function postParams(act, t) {
   const p = { glitch: 0, rgb: 0, vhs: 0, grain: 0, flash: 0, zoom: 1, blur: 0, pixel: 0, mirror: 0, bw: 0, sepia: 0, vig: 0, glow: 0, shake: [0, 0] };
   for (const c of act) {
+    if (c.type === 'fx' && c.kind === 'particles' && c.fx === 'particulas') { // grano fino del efecto «Partículas»
+      const lg = t - c.start, gg = clamp(Math.min(1, lg / Math.max(0.01, c.fade), (c.dur - lg) / Math.max(0.01, c.fade)), 0, 1);
+      p.grain = Math.max(p.grain, 0.09 * c.intensity * gg);
+    }
     if (c.type !== 'fx' || c.kind !== 'post') continue;
     const lt = t - c.start;
     const g = clamp(Math.min(1, lt / Math.max(0.01, c.fade), (c.dur - lt) / Math.max(0.01, c.fade)), 0, 1);
