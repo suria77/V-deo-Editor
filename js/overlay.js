@@ -193,6 +193,31 @@ function partNoise() { // textura moteada (grano grueso de película), generada 
 }
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
+
+// ---- «Partículas 2»: grandes discos de bokeh casi quietos y fugas de luz violeta (recreado del vídeo de muestra) ----
+const p2Cache = new Map();
+function p2discSprite(rgb) { // disco de lente: interior algo más apagado que el borde, canto definido
+  const key = rgb.join(',');
+  let s = p2Cache.get(key);
+  if (s) return s;
+  s = document.createElement('canvas'); s.width = s.height = 256;
+  const g = s.getContext('2d'), gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  gr.addColorStop(0, css(rgb, 0.8)); gr.addColorStop(0.7, css(rgb, 0.92)); gr.addColorStop(0.86, css(rgb, 1));
+  gr.addColorStop(0.93, css(rgb, 0.55)); gr.addColorStop(0.975, css(rgb, 0.12)); gr.addColorStop(1, css(rgb, 0));
+  g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+  p2Cache.set(key, s);
+  return s;
+}
+let p2TexCv = null;
+function p2Texture() { // textura moteada fija (como polvo de película), cambia muy despacio
+  if (p2TexCv) return p2TexCv;
+  const w = 160, h = 160; p2TexCv = document.createElement('canvas'); p2TexCv.width = w; p2TexCv.height = h;
+  const g = p2TexCv.getContext('2d'), id = g.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) { const v = 255 * Math.pow(Math.random(), 2.6); id.data[i * 4] = v; id.data[i * 4 + 1] = v * 0.5; id.data[i * 4 + 2] = v * 0.8; id.data[i * 4 + 3] = 255; }
+  g.putImageData(id, 0, 0);
+  return p2TexCv;
+}
+
 function particles(ctx, c, t, lt, W, H, g) {
   const id = c.fx, I = c.intensity, sp = c.speed, sz = c.size, seed = c.seed;
   const S = Math.min(W, H) / 1080;
@@ -817,6 +842,48 @@ function particles(ctx, c, t, lt, W, H, g) {
         }
         blob(ctx, hot, x, y, 50 * S * sz, 50 * S * sz, 0.8 * e);
         pdisc(ctx, hot, x, y, 14 * S * sz, 0.75 * e);
+      }
+      break;
+    }
+    case 'particulas2': {
+      // Partículas 2: fondo ciruela oscuro con textura, discos de bokeh grandes y transparentes (ámbar, óxido, violeta, rosa)
+      // que flotan muy despacio, y cada ~3 s una fuga de luz violeta que entra por la derecha y otra rosada abajo a la izquierda.
+      const k8 = clamp(I * 1.25, 0, 1) * g;
+      ctx.globalAlpha = k8; ctx.fillStyle = 'rgb(31,5,20)'; ctx.fillRect(0, 0, W, H);
+      { // textura fija
+        const tex = p2Texture(), cell = 11 * S, tw = 160 * cell, ox = (T * 2 * S) % tw;
+        ctx.globalAlpha = 0.085 * k8; ctx.imageSmoothingEnabled = true;
+        for (let yy = 0; yy < H; yy += tw) for (let xx = -ox; xx < W; xx += tw) ctx.drawImage(tex, xx, yy, tw, tw);
+      }
+      // fugas de luz: un ciclo cada ~3 s con variaciones
+      const P = 3, q = T / P, cyc = Math.floor(q), u = fract(q);
+      const amp = 0.85 + 0.3 * rnd(cyc, 801, seed), rise = smooth(0.12, 0.58, u);
+      const vio = rise * (1 - smooth(0.68, 0.95, u)) * amp, vioR = rise * (1 - smooth(0.8, 1, u)) * amp;
+      const vy = 0.18 + 0.22 * rnd(cyc, 802, seed);
+      const violet = mixRgb(base, [165, 75, 245], 0.85), magenta = mixRgb(base, [225, 95, 215], 0.85), lav = [215, 185, 245];
+      blob(ctx, violet, W * 0.9, -H * 0.05 + H * vy * 0.3, W * 1.9 * sz, H * 1.6 * sz, 0.52 * vio * k8);
+      blob(ctx, magenta, W * 1.05, H * (0.55 + vy * 0.5), W * 1.0 * sz, H * 1.4 * sz, 0.5 * vioR * k8);
+      blob(ctx, mixRgb(violet, [120, 60, 255], 0.4), W * 1.06, H * 0.55, W * 0.55 * sz, H * 1.9 * sz, 0.38 * vioR * k8);
+      blob(ctx, mixRgb(violet, [110, 50, 230], 0.5), W * 0.55, -H * 0.1, W * 0.9 * sz, H * 0.5 * sz, 0.3 * vio * k8);
+      const top = smooth(0.42, 0.7, u) * (1 - smooth(0.84, 1, u));
+      { const lx = W * (0.28 + 0.12 * rnd(cyc, 803, seed)), lr = H * 0.14 * sz;
+        blob(ctx, lav, lx, -H * 0.01, lr * 4.5, lr * 3.4, 0.26 * top * k8);
+        ctx.globalAlpha = 0.13 * top * k8; ctx.drawImage(p2discSprite(lav), lx - lr, H * 0.02 - lr, lr * 2, lr * 2); }
+      const rose = Math.max(1 - smooth(0, 0.14, u), smooth(0.86, 1, u)) * (0.7 + 0.3 * rnd(cyc + (u > 0.5 ? 1 : 0), 804, seed));
+      blob(ctx, [255, 100, 120], -W * 0.05, H * 0.88, H * 1.2 * sz, H * 1.3 * sz, 0.5 * rose * k8);
+      // discos de bokeh
+      const pal = [[255, 165, 45], [235, 85, 55], [140, 75, 255], [255, 125, 165]];
+      for (let i = 0; i < N(11); i++) {
+        const r1 = rnd(i, 811, seed), r2 = rnd(i, 812, seed);
+        const life = 3.2 + 2 * r1, qq = T / life + r2, cy = Math.floor(qq), uu = fract(qq);
+        const k = 813 + cy * 9;
+        const ang = rnd(i, k, seed) * 6.283, v = (5 + 10 * rnd(i, k + 1, seed)) * S * sp, el = uu * life / sp;
+        const x = W * (-0.05 + 1.1 * rnd(i, k + 2, seed)) + Math.cos(ang) * v * el, y = H * (-0.05 + 1.1 * rnd(i, k + 3, seed)) + Math.sin(ang) * v * el;
+        const R = (85 + 85 * rnd(i, k + 4, seed)) * S * sz * (1 + 0.04 * uu);
+        const col = mixRgb(pal[Math.floor(rnd(i, k + 5, seed) * 4)], base, 0.1);
+        const env = Math.pow(Math.sin(uu * Math.PI), 0.7);
+        const a = (0.06 + 0.06 * rnd(i, k + 6, seed)) * env * g * Math.min(1, I * 1.25);
+        if (a > 0.003) { ctx.globalAlpha = a; ctx.drawImage(p2discSprite(col), x - R, y - R, R * 2, R * 2); }
       }
       break;
     }
@@ -1666,7 +1733,7 @@ export class Overlay {
 export function postParams(act, t) {
   const p = { glitch: 0, rgb: 0, vhs: 0, grain: 0, flash: 0, zoom: 1, blur: 0, pixel: 0, mirror: 0, bw: 0, sepia: 0, vig: 0, glow: 0, shake: [0, 0] };
   for (const c of act) {
-    if (c.type === 'fx' && c.kind === 'particles' && c.fx === 'particulas') { // grano fino del efecto «Partículas»
+    if (c.type === 'fx' && c.kind === 'particles' && (c.fx === 'particulas' || c.fx === 'particulas2')) { // grano fino de «Partículas» y «Partículas 2»
       const lg = t - c.start, gg = clamp(Math.min(1, lg / Math.max(0.01, c.fade), (c.dur - lg) / Math.max(0.01, c.fade)), 0, 1);
       p.grain = Math.max(p.grain, 0.09 * c.intensity * gg);
     }
