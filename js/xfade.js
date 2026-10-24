@@ -8,6 +8,7 @@ export const XFADES = [
   { id: 'black', n: 'Por negro', i: '⚫' },
   { id: 'white', n: 'Por blanco', i: '⚪' },
   { id: 'flash', n: 'Destello de luz', i: '✨' },
+  { id: 'velo', n: 'Velo de luz', i: '🌅', dur: 1.4 },
   { id: 'zoomIn', n: 'Zoom adentro', i: '🔍' },
   { id: 'zoomOut', n: 'Zoom afuera', i: '🔎' },
   { id: 'slideL', n: 'Empujar ←', i: '⬅️' },

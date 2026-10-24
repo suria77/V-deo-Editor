@@ -432,6 +432,126 @@ function particles(ctx, c, t, lt, W, H, g) {
       }
       break;
     }
+    case 'ascuas': {
+      // Ascuas: luces desenfocadas rojizo-anaranjadas que laten despacio y chispas planas que giran y titilan
+      const orb = base;
+      const hot = mixRgb(base, [255, 175, 80], 0.55);
+      const core = mixRgb(base, [255, 215, 150], 0.6);
+      ctx.globalAlpha = 1; ctx.fillStyle = css(orb, 0.085 * I * g); ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < N(14); i++) {
+        const r1 = rnd(i, 101, seed), r2 = rnd(i, 102, seed), r3 = rnd(i, 103, seed), r4 = rnd(i, 104, seed);
+        const life = 2.4 + 1.8 * r1;
+        const q = T / life + r2, cyc = Math.floor(q), u = fract(q);
+        const ang = rnd(i, 106 + cyc * 5, seed) * Math.PI * 2;
+        const x = W * (rnd(i, 105 + cyc * 5, seed) * 1.1 - 0.05) + Math.cos(ang) * H * 0.035 * u;
+        const y = H * (rnd(i, 107 + cyc * 5, seed) * 1.05 - 0.025) + Math.sin(ang) * H * 0.035 * u;
+        const rad = (0.085 + 0.06 * r4) * H * sz * (0.9 + 0.15 * u);
+        const env = Math.pow(Math.sin(u * Math.PI), 1.3);
+        const a = env * (0.32 + 0.2 * r3) * I * g;
+        disc(ctx, orb, x, y, rad, a * 0.55);
+        blob(ctx, orb, x, y, rad * 2.6, rad * 2.6, a * 0.55);
+        blob(ctx, hot, x - rad * 0.15, y - rad * 0.1, rad * 1.1, rad * 1.1, a * 0.25);
+      }
+      // chispas: copos planos que giran (se ven redondos o alargados) con un pequeño halo
+      for (let i = 0; i < N(13); i++) {
+        const r1 = rnd(i, 111, seed), r2 = rnd(i, 112, seed), r3 = rnd(i, 113, seed), r4 = rnd(i, 114, seed);
+        const life = 0.9 + 1.6 * r1;
+        const q = T / life + r2, cyc = Math.floor(q), u = fract(q);
+        const ang = rnd(i, 116 + cyc * 5, seed) * Math.PI * 2, spd = (0.01 + 0.03 * r3) * H;
+        const x = W * rnd(i, 115 + cyc * 5, seed) + Math.cos(ang) * spd * u * life;
+        const y = H * rnd(i, 117 + cyc * 5, seed) + Math.sin(ang) * spd * u * life;
+        const env = clamp(u / 0.12, 0, 1) * clamp((1 - u) / 0.3, 0, 1);
+        const tw = 0.75 + 0.25 * Math.sin(T * (9 + 8 * r4) + r1 * 40);
+        const a = env * tw * (0.7 + 0.3 * r4) * g * Math.min(1, I * 1.3);
+        if (a <= 0.004) continue;
+        const rx = (7 + 6 * r4 * r4) * S * sz;
+        const spin = T * (2 + 5 * r3) * (r2 > 0.5 ? 1 : -1) + r1 * 9;
+        const ry = rx * (0.22 + 0.78 * Math.abs(Math.cos(spin)));
+        blob(ctx, orb, x, y, rx * 7, rx * 7, a * 0.22);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(ang + r4 * 3);
+        ctx.globalAlpha = clamp(a, 0, 1);
+        ctx.fillStyle = css(hot, 1);
+        ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = clamp(a * 0.6, 0, 1);
+        ctx.fillStyle = css(core, 1);
+        ctx.beginPath(); ctx.ellipse(0, 0, rx * 0.55, ry * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+      // motas diminutas
+      for (let i = 0; i < N(22); i++) {
+        const r1 = rnd(i, 121, seed), r2 = rnd(i, 122, seed), r3 = rnd(i, 123, seed);
+        const tw = Math.pow(0.5 + 0.5 * Math.sin(T * (2 + 5 * r1) + r2 * 60), 4);
+        const x = W * fract(r3 + T * 0.006 * (r1 - 0.5)), y = H * fract(rnd(i, 124, seed) + T * 0.005 * (r2 - 0.5));
+        const s = (2 + 2.5 * r2) * S * sz;
+        blob(ctx, hot, x, y, s * 2.4, s * 2.4, 0.75 * tw * g);
+      }
+      break;
+    }
+    case 'luciernagas': {
+      // Luciérnagas: grandes luces ámbar desenfocadas (con textura interior y reflejos de lente) que crecen y se apagan
+      const amber = base;
+      const pale = mixRgb(base, [255, 195, 95], 0.45);
+      const green = mixRgb(base, [200, 215, 120], 0.55);
+      const red = mixRgb(base, [255, 90, 40], 0.45);
+      const white = [255, 250, 235];
+      for (let i = 0; i < N(5); i++) {
+        const r1 = rnd(i, 131, seed), r2 = rnd(i, 132, seed), r3 = rnd(i, 133, seed), r4 = rnd(i, 134, seed);
+        const life = 2.6 + 1.6 * r1;
+        const q = T / life + r2, cyc = Math.floor(q), u = fract(q);
+        const ang = rnd(i, 136 + cyc * 5, seed) * Math.PI * 2;
+        const x = W * (rnd(i, 135 + cyc * 5, seed) * 1.2 - 0.1) + Math.cos(ang) * H * 0.05 * u;
+        const y = H * (rnd(i, 137 + cyc * 5, seed) * 1.1 - 0.05) + Math.sin(ang) * H * 0.05 * u - H * 0.03 * u;
+        const rad = (0.155 + 0.05 * r4) * H * sz * (0.85 + 0.25 * u);
+        const env = clamp(u / 0.25, 0, 1) * Math.pow(clamp((1 - u) / 0.55, 0, 1), 1.2);
+        const a = env * (0.75 + 0.25 * r3) * I * g;
+        if (a <= 0.004) continue;
+        ctx.save(); ctx.translate(x, y); ctx.scale(0.86, 1); ctx.rotate(r1 * 0.6 - 0.3);
+        disc(ctx, amber, 0, 0, rad, a * 0.8);
+        blob(ctx, amber, 0, 0, rad * 2.4, rad * 2.4, a * 0.3);
+        // textura interior: manchas más claras y un reflejo verdoso
+        for (let k = 0; k < 3; k++) {
+          const kx = (rnd(i, 140 + k + cyc * 9, seed) - 0.5) * rad, ky = (rnd(i, 143 + k + cyc * 9, seed) - 0.5) * rad;
+          blob(ctx, pale, kx, ky, rad * 0.9, rad * 0.9, a * 0.28);
+        }
+        blob(ctx, green, rad * 0.3, rad * 0.5, rad * 0.35, rad * 0.35, a * 0.5);
+        blob(ctx, green, -rad * 0.3, -rad * 0.1, rad * 0.16, rad * 0.5, a * 0.3);
+        ctx.restore();
+        // aro fantasma de la lente
+        ctx.globalAlpha = clamp(a * 0.35, 0, 1);
+        ctx.strokeStyle = css(pale, 1); ctx.lineWidth = 2.4 * S;
+        ctx.beginPath(); ctx.arc(x + rad * 0.2, y + rad * 0.85, rad * 0.17, 0, Math.PI * 2); ctx.stroke();
+      }
+      // pequeños reflejos con brillo blanco y arco (como una gota de luz en el cristal)
+      for (let i = 0; i < N(3); i++) {
+        const r1 = rnd(i, 151, seed), r2 = rnd(i, 152, seed), r3 = rnd(i, 153, seed);
+        const life = 3 + 1.5 * r1;
+        const q = T / life + r2, cyc = Math.floor(q), u = fract(q);
+        const x = W * (0.15 + 0.75 * rnd(i, 155 + cyc * 5, seed)) - W * 0.03 * u;
+        const y = H * (0.2 + 0.75 * rnd(i, 157 + cyc * 5, seed)) - H * 0.04 * u;
+        const rad = (0.075 + 0.035 * r3) * H * sz;
+        const env = Math.pow(Math.sin(u * Math.PI), 1.2);
+        const a = env * I * g;
+        if (a <= 0.004) continue;
+        disc(ctx, red, x, y, rad, a * 0.5);
+        blob(ctx, red, x + rad * 1.5, y + rad * 0.9, rad * 1.7, rad * 1.7, a * 0.6);
+        ctx.globalAlpha = clamp(a * 0.55, 0, 1);
+        ctx.strokeStyle = css(pale, 1); ctx.lineWidth = 2 * S;
+        ctx.beginPath(); ctx.ellipse(x + rad * 0.55, y, rad * 0.55, rad * 1.05, 0, -1.2, 1.4); ctx.stroke();
+        blob(ctx, white, x + rad * 0.95, y - rad * 0.1, rad * 0.45, rad * 0.9, a);
+        blob(ctx, white, x + rad * 0.95, y - rad * 0.1, rad * 0.2, rad * 0.5, a);
+        blob(ctx, red, x + rad * 0.3, y + rad * 0.3, rad * 0.35, rad * 0.35, a * 0.8);
+      }
+      // resplandor que entra por los bordes
+      for (let i = 0; i < N(2); i++) {
+        const r1 = rnd(i, 161, seed), r2 = rnd(i, 162, seed);
+        const life = 3.5 + 2 * r1;
+        const q = T / life + r2, cyc = Math.floor(q), u = fract(q);
+        const side = rnd(i, 163 + cyc * 3, seed) > 0.5;
+        const x = side ? W * 1.02 : -W * 0.02, y = H * (0.2 + 0.7 * rnd(i, 164 + cyc * 3, seed));
+        blob(ctx, red, x, y, H * 0.12 * sz, H * 0.3 * sz, Math.pow(Math.sin(u * Math.PI), 1.5) * 0.6 * I * g);
+      }
+      break;
+    }
     case 'fire': {
       const core = mixRgb(base, [255, 250, 220], 0.75), hot = mixRgb(base, [255, 220, 90], 0.5), mid = base, tail = base.map((v, k) => Math.round(v * (k === 0 ? 0.75 : 0.3)));
       const flick = 0.85 + 0.15 * Math.sin(T * 9.7) * Math.sin(T * 5.3);
@@ -746,8 +866,10 @@ export function drawText(ctx, c, lt, W, H) {
   if (ctx.canvas.width === W) textBounds.set(c.id, { cx, cy, w: (maxLW + px * 0.7) * scale, h: (lines.length * lh + px * 0.3) * scale, rot: (c.rot * Math.PI) / 180, a: alpha });
   // «Perro forma»: el texto se dibuja aparte y luego se compone con estela, cortes, destello y rayo
   const pfOn = inA.type === 'perroForma' && lt < inA.dur;
+  const apOn = inA.type === 'apertura' && lt < inA.dur;
+  const lcOn = inA.type === 'luciernaga' && lt < inA.dur;
   let dc = ctx, pfS = null;
-  if (pfOn) {
+  if (pfOn || apOn) {
     pfS = scratchFor(ctx.canvas.width, ctx.canvas.height);
     pfS.ctx.setTransform(1, 0, 0, 1, 0, 0);
     pfS.ctx.clearRect(0, 0, pfS.cv.width, pfS.cv.height);
@@ -767,6 +889,15 @@ export function drawText(ctx, c, lt, W, H) {
     dc.fillStyle = c.bg.color;
     rrect(dc, -bw / 2, -bh / 2, bw, bh, px * 0.25);
     dc.fill();
+  }
+  if (lcOn) {
+    // «Luciérnagas»: un resplandor cálido con borde frío y grano aparece detrás del texto y se apaga
+    const gl = clamp((pIn - 0.03) / 0.25, 0, 1) * (1 - clamp((pIn - 0.55) / 0.45, 0, 1));
+    if (gl > 0.003) {
+      const bw = maxLW * 1.3 + px * 1.5, bh = lines.length * lh + px * 1.6;
+      dc.globalAlpha = clamp(alpha * gl, 0, 1);
+      dc.drawImage(glowSprite(), -bw / 2, -bh / 2, bw, bh);
+    }
   }
   dc.lineJoin = 'round';
   dc.miterLimit = 2;
@@ -789,6 +920,15 @@ export function drawText(ctx, c, lt, W, H) {
         cw = clamp(1 - age / life, 0, 1);
         a *= clamp(0.55 + age / 0.03, 0, 1);
         gdy -= cw * cw * px * 0.06;
+        break;
+      }
+      case 'luciernaga': {
+        // cada letra se enciende en un momento distinto, fuera de su sitio, y luego cae a la línea
+        const r1 = rnd(gi, 201, 5), r2 = rnd(gi, 202, 5), r3 = rnd(gi, 203, 5);
+        const tA = r1 * 0.38, tS = 0.4 + 0.42 * r3;
+        a *= clamp((pIn - tA) / 0.1, 0, 1);
+        const off = (0.12 - r2 * 0.55) * px;
+        gdy += off * (1 - ease(clamp((pIn - tS) / 0.09, 0, 1)));
         break;
       }
       default: break;
@@ -842,6 +982,7 @@ export function drawText(ctx, c, lt, W, H) {
   });
   dc.restore();
   if (pfOn) perroForma(ctx, pfS.cv, lt / Math.max(0.05, inA.dur), lt, cx, cy, maxLW * scale, (lines.length * lh) * scale, px * scale);
+  if (apOn) apertura(ctx, pfS, pIn, cx, maxLW * scale);
   ctx.restore();
   return true;
 }
@@ -851,6 +992,58 @@ function scratchFor(w, h) {
   if (!scratch.cv) { scratch.cv = document.createElement('canvas'); scratch.ctx = scratch.cv.getContext('2d'); }
   if (scratch.cv.width !== w || scratch.cv.height !== h) { scratch.cv.width = w; scratch.cv.height = h; }
   return scratch;
+}
+
+// Entrada «Apertura»: una ventana de bordes suaves se abre desde el centro del texto hacia los lados
+function apertura(ctx, sc, p, cx, tw) {
+  const hw = tw / 2 + 2, F = Math.max(8, tw * 0.28);
+  const k = clamp((p - 0.04) / 0.96, 0, 1);
+  const Wt = (hw + F) * Math.pow(k, 1.25), R = Math.max(0, Wt - F);
+  const c2 = sc.ctx;
+  c2.save();
+  c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.globalCompositeOperation = 'destination-in';
+  const x0 = cx - Wt, x1 = cx + Wt;
+  const gr = c2.createLinearGradient(x0, 0, x1, 0);
+  const f = Math.min(0.5, (Wt - R) / Math.max(1, x1 - x0));
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(f, 'rgba(0,0,0,1)');
+  gr.addColorStop(1 - f, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  c2.fillStyle = gr;
+  c2.fillRect(0, 0, sc.cv.width, sc.cv.height);
+  c2.clearRect(0, 0, Math.max(0, x0), sc.cv.height);
+  c2.clearRect(x1, 0, sc.cv.width, sc.cv.height);
+  c2.restore();
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.drawImage(sc.cv, 0, 0);
+  ctx.restore();
+}
+
+// resplandor granulado (centro cálido, borde azulado) que va detrás del texto en «Luciérnagas»
+let _glow = null;
+function glowSprite() {
+  if (_glow) return _glow;
+  const w = 320, h = 128;
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const g = cv.getContext('2d');
+  const img = g.createImageData(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const nx = (x / w - 0.5) * 2, ny = (y / h - 0.5) * 2;
+    const d = Math.sqrt(nx * nx * 0.9 + ny * ny);
+    const m = Math.pow(clamp(1 - d, 0, 1), 0.9);
+    const warm = Math.pow(clamp(1 - Math.sqrt(nx * nx * 1.6 + ny * ny * 1.3), 0, 1), 1.3);
+    const n = 0.78 + 0.44 * rnd(x, y, 3);
+    const i = (y * w + x) * 4;
+    img.data[i] = clamp((70 + 170 * warm) * n, 0, 255);
+    img.data[i + 1] = clamp((88 + 95 * warm) * n, 0, 255);
+    img.data[i + 2] = clamp((108 + 30 * warm) * n, 0, 255);
+    img.data[i + 3] = clamp(m * 235, 0, 255);
+  }
+  g.putImageData(img, 0, 0);
+  _glow = cv;
+  return cv;
 }
 
 // Entrada «Perro forma»: llega desde la izquierda con estela y cortes de glitch, un destello redondo

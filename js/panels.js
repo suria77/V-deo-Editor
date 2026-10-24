@@ -425,7 +425,7 @@ export class Panels {
         b.append(sec('xfade', 'Transición con el siguiente clip', '🔀',
           nx ? null : h('p', { class: 'hint' }, 'Este clip no tiene otro clip pegado justo después en su misma pista. Las transiciones se ponen entre dos clips seguidos: toca el botón «+» que aparece entre ellos en la línea de tiempo.'),
           nx ? chips(XFADES, cur ? cur.type : 'none', (v) => {
-            c.xfade = v === 'none' ? null : { type: v, dur: cur ? cur.dur : 0.8 };
+            c.xfade = v === 'none' ? null : { type: v, dur: XFADES.find((x) => x.id === v)?.dur || (cur ? cur.dur : 0.8) };
             done(); bus.emit('change', { structural: true, keepPanel: true });
             if (c.xfade) app.preview(c.start + c.dur - c.xfade.dur / 2 - 0.4, c.xfade.dur + 0.8);
             this.render();

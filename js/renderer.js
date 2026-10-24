@@ -291,6 +291,13 @@ export function computeTransform(c, lt, W, H, srcW, srcH, xf, tAbs = 0) {
         break;
       }
       case 'flash': if (!out) alpha *= clamp((p - 0.3) / 0.4, 0, 1); flash += Math.pow(Math.sin(p * Math.PI), 2) * 0.6; lod += Math.sin(p * Math.PI) * 1.5; break;
+      case 'velo': {
+        // velo de luz: la imagen se aclara como con bruma, se funde con la siguiente y la luz se retira despacio
+        const lift = p < 0.38 ? Math.pow(p / 0.38, 1.5) : Math.pow(1 - (p - 0.38) / 0.62, 1.7);
+        flash += 0.2 * lift;
+        if (!out) alpha *= clamp((p - 0.3) / 0.35, 0, 1);
+        break;
+      }
       case 'zoomIn':
         if (out) { scale *= 1 + 1.4 * e; lod += e * 4; alpha *= 1 - clamp((p - 0.35) / 0.4, 0, 1); }
         else { scale *= 0.75 + 0.25 * e; lod += (1 - e) * 4; alpha *= clamp((p - 0.25) / 0.4, 0, 1); }

@@ -131,6 +131,8 @@ export const TEXT_IN = [
   { id: 'glow', n: 'Brillo que aparece' },
   { id: 'callejuela', n: 'Callejuela', dur: 0.6 },
   { id: 'perroForma', n: 'Perro forma', dur: 0.42 },
+  { id: 'apertura', n: 'Apertura', dur: 1.8 },
+  { id: 'luciernaga', n: 'Luciérnagas', dur: 3 },
 ];
 
 export const TEXT_OUT = [
@@ -164,6 +166,8 @@ export const TEXT_STYLES = [
   { n: 'Escritura', css: 'font-family:Dancing Script;font-weight:700;color:#ffd6e8', p: { font: 'Dancing Script', weight: 700, size: 0.09, color: '#ffd6e8', color2: '', stroke: { w: 0, color: '#000000' }, shadow: { blur: 0.5, color: '#b0006a' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'typewriter', dur: 1.4 }, outAnim: { type: 'fade', dur: 0.5 } } },
   { n: 'Callejuela', css: 'font-family:Figtree;font-weight:600;color:#fff;text-shadow:0 0 8px #ff7ad9', p: { font: 'Figtree', weight: 600, size: 0.06, color: '#ffffff', color2: '', stroke: { w: 0, color: '#000000' }, shadow: { blur: 0, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'callejuela', dur: 0.6 }, outAnim: { type: 'fade', dur: 0.3 } } },
   { n: 'Perro forma', css: 'font-family:Figtree;font-weight:600;color:#fff;text-shadow:0 0 10px #fff', p: { font: 'Figtree', weight: 600, size: 0.06, color: '#ffffff', color2: '', stroke: { w: 0, color: '#000000' }, shadow: { blur: 0, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'perroForma', dur: 0.42 }, outAnim: { type: 'fade', dur: 0.3 } } },
+  { n: 'Apertura', css: 'font-family:Figtree;font-weight:600;color:#fff;-webkit-mask-image:linear-gradient(90deg,transparent,#000 30%,#000 70%,transparent)', p: { font: 'Figtree', weight: 600, size: 0.06, color: '#ffffff', color2: '', stroke: { w: 0, color: '#000000' }, shadow: { blur: 0, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'apertura', dur: 1.8 }, outAnim: { type: 'fade', dur: 0.3 } } },
+  { n: 'Luciérnagas', css: 'font-family:Figtree;font-weight:600;color:#fff;text-shadow:0 0 12px #e8b07a', p: { font: 'Figtree', weight: 600, size: 0.06, color: '#ffffff', color2: '', stroke: { w: 0, color: '#000000' }, shadow: { blur: 0, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'luciernaga', dur: 3 }, outAnim: { type: 'fade', dur: 0.3 } } },
   { n: 'Arcoíris', css: 'font-family:Poppins;font-weight:900;background:linear-gradient(90deg,#f33,#fc0,#3c3,#39f,#c3f);-webkit-background-clip:text;color:transparent', p: { font: 'Poppins', weight: 900, size: 0.08, color: '#ffffff', color2: '', stroke: { w: 0.006, color: '#000000' }, shadow: { blur: 0.2, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'lettersRise', dur: 0.9 }, outAnim: { type: 'fade', dur: 0.4 }, loop: { type: 'rainbow', amount: 0.7 } } },
 ];
 
@@ -178,6 +182,8 @@ export const PARTICLES = [
   { id: 'shards', n: 'Fragmentos de estrella', i: '🌠', cat: 'luz', add: true, color: '#ffe08a', size: 1, speed: 1, intensity: 0.7 },
   { id: 'callejuela', n: 'Callejuela', i: '🌟', cat: 'luz', add: true, color: '#ffbf4d', size: 1, speed: 1, intensity: 0.8 },
   { id: 'perroForma', n: 'Perro forma', i: '🫧', cat: 'luz', add: true, color: '#e7a3a0', size: 1, speed: 1, intensity: 0.8 },
+  { id: 'ascuas', n: 'Ascuas', i: '🔴', cat: 'luz', add: true, color: '#e8461c', size: 1, speed: 1, intensity: 0.8 },
+  { id: 'luciernagas', n: 'Luciérnagas', i: '🟠', cat: 'luz', add: true, color: '#d9861c', size: 1, speed: 1, intensity: 0.8 },
   // --- ambiente ---
   { id: 'fire', n: 'Fuego', i: '🔥', add: true, color: '#ff7a1a', size: 1, speed: 1, intensity: 0.7 },
   { id: 'embers', n: 'Brasas', i: '✨', add: true, color: '#ff9a3c', size: 1, speed: 1, intensity: 0.6 },
