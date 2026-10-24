@@ -218,6 +218,34 @@ function p2Texture() { // textura moteada fija (como polvo de película), cambia
   return p2TexCv;
 }
 
+
+// ---- «Partículas 3»: luces ámbar que nacen abajo como gotas brillantes, suben, se hinchan y se apagan (recreado de la muestra) ----
+const p3Cache = {};
+function p3Sprite(kind) {
+  if (p3Cache[kind]) return p3Cache[kind];
+  const s = document.createElement('canvas'); s.width = s.height = 256;
+  const g = s.getContext('2d');
+  const rad = (stops) => { const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128); for (const [o, c, a] of stops) gr.addColorStop(o, css(c, a)); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); };
+  if (kind === 'orb') { // perfil medido: interior plano amarillo anaranjado, borde que enrojece y se difumina
+    rad([[0, [255, 196, 40], 1], [0.45, [255, 186, 34], 0.95], [0.62, [255, 140, 32], 0.75], [0.78, [230, 80, 30], 0.42], [0.9, [190, 45, 30], 0.14], [1, [150, 30, 30], 0]]);
+  } else if (kind === 'drop') { // gota: luz crema con un filo rojizo en un lado
+    rad([[0, [255, 236, 205], 1], [0.4, [250, 215, 180], 0.85], [0.62, [240, 160, 120], 0.35], [1, [200, 90, 70], 0]]);
+    g.globalCompositeOperation = 'lighter'; g.lineWidth = 18;
+    const gr = g.createLinearGradient(150, 0, 250, 0); gr.addColorStop(0, css([255, 90, 50], 0)); gr.addColorStop(0.7, css([255, 90, 50], 0.6)); gr.addColorStop(1, css([255, 90, 50], 0));
+    g.strokeStyle = gr; g.beginPath(); g.ellipse(128, 128, 112, 120, 0, -1.25, 1.25); g.stroke();
+    g.lineWidth = 5; g.strokeStyle = css([255, 190, 160], 0.25); g.beginPath(); g.ellipse(128, 128, 108, 116, 0, -1, 1); g.stroke();
+  } else if (kind === 'ring') { // halo en anillo que aparece al desenfocarse
+    rad([[0, [255, 150, 60], 0.75], [0.35, [255, 130, 50], 0.65], [0.65, [240, 95, 40], 0.35], [0.85, [210, 65, 30], 0.12], [1, [190, 50, 30], 0]]);
+  }
+  p3Cache[kind] = s;
+  return s;
+}
+function p3draw(ctx, kind, x, y, rx, ry, a) {
+  if (a <= 0.003 || rx < 0.5) return;
+  ctx.globalAlpha = clamp(a, 0, 1);
+  ctx.drawImage(p3Sprite(kind), x - rx, y - ry, rx * 2, ry * 2);
+}
+
 function particles(ctx, c, t, lt, W, H, g) {
   const id = c.fx, I = c.intensity, sp = c.speed, sz = c.size, seed = c.seed;
   const S = Math.min(W, H) / 1080;
@@ -884,6 +912,54 @@ function particles(ctx, c, t, lt, W, H, g) {
         const env = Math.pow(Math.sin(uu * Math.PI), 0.7);
         const a = (0.06 + 0.06 * rnd(i, k + 6, seed)) * env * g * Math.min(1, I * 1.25);
         if (a > 0.003) { ctx.globalAlpha = a; ctx.drawImage(p2discSprite(col), x - R, y - R, R * 2, R * 2); }
+      }
+      break;
+    }
+    case 'particulas3': {
+      // Partículas 3: fondo ciruela con textura; cada luz nace abajo como una gota con brillo crema y filo rojizo,
+      // sube despacio, se desenfoca en anillos con destellos y se convierte en un gran óvalo ámbar que sube rápido y se apaga.
+      const k8 = clamp(I * 1.25, 0, 1) * g;
+      ctx.globalAlpha = k8; ctx.fillStyle = 'rgb(31,5,20)'; ctx.fillRect(0, 0, W, H);
+      {
+        const tex = p2Texture(), cell = 11 * S, tw = 160 * cell, ox = (T * 2 * S) % tw;
+        ctx.globalAlpha = 0.085 * k8; ctx.imageSmoothingEnabled = true;
+        for (let yy = 0; yy < H; yy += tw) for (let xx = -ox; xx < W; xx += tw) ctx.drawImage(tex, xx, yy, tw, tw);
+      }
+      const tint = (c) => mixRgb(c, base, 0.12);
+      const white = [255, 245, 225];
+      for (let i = 0; i < N(4); i++) {
+        const life = 2.9 + 0.5 * rnd(i, 901, seed), q = T / life + rnd(i, 902, seed) + i * 0.37, cy = Math.floor(q), p = fract(q);
+        const k = 903 + cy * 7;
+        const x0 = W * (0.06 + 0.88 * rnd(i, k, seed)), dx = (rnd(i, k + 1, seed) - 0.5) * 60 * S;
+        // altura: gota lenta abajo, luego subida rápida (medido: ~0,37 H/s en la fase de óvalo)
+        const y = p < 0.33 ? H * (1.03 - 0.17 * (p / 0.33)) : H * (0.86 - 0.62 * Math.pow((p - 0.33) / 0.67, 1.05));
+        const x = x0 + dx * p;
+        const big = 0.85 + 0.3 * rnd(i, k + 2, seed);
+        // 1) gota
+        const dA = smooth(0, 0.08, p) * (1 - smooth(0.26, 0.42, p));
+        if (dA > 0) {
+          const rx = 48 * S * sz * big, ry = 68 * S * sz * big;
+          p3draw(ctx, 'drop', x, y, rx, ry, 0.62 * dA * k8);
+          blob(ctx, white, x - rx * 0.1, y, rx * 1.1, ry * 1.1, 0.2 * dA * k8);
+        }
+        // 2) desenfoque: anillos y destellos
+        const mA = smooth(0.2, 0.32, p) * (1 - smooth(0.42, 0.6, p));
+        if (mA > 0) {
+          const gr = smooth(0.2, 0.55, p), R = (60 + 90 * gr) * S * sz * big;
+          p3draw(ctx, 'ring', x - R * 0.3, y + R * 0.05, R * 0.85, R * 0.9, 0.36 * mA * k8);
+          p3draw(ctx, 'ring', x + R * 0.5, y + R * 0.15, R * 0.6, R * 0.65, 0.32 * mA * k8);
+          p3draw(ctx, 'ring', x, y, R * 1.3, R * 1.35, 0.16 * mA * k8);
+          blob(ctx, white, x + R * 0.12, y - R * 0.18, 7 * S, 30 * S, 0.9 * mA * k8);
+          blob(ctx, [255, 225, 150], x - R * 0.1, y + R * 0.05, 16 * S, 16 * S, 0.6 * mA * k8);
+        }
+        // 3) óvalo ámbar
+        const oA = smooth(0.3, 0.5, p) * (1 - smooth(0.64, 0.95, p));
+        if (oA > 0) {
+          const gr = smooth(0.3, 0.6, p), rx = (90 + 95 * gr) * S * sz * big, ry = rx * 1.18;
+          p3draw(ctx, 'orb', x, y, rx, ry, 0.5 * oA * k8);
+          blob(ctx, [255, 230, 150], x - rx * 0.3, y + ry * 0.55, rx * 0.8, rx * 0.8, 0.3 * oA * k8);   // disco claro inferior
+          blob(ctx, white, x + rx * 0.22, y + ry * 0.05, 6 * S, ry * 0.45, 0.22 * oA * k8);                  // reflejo vertical
+        }
       }
       break;
     }
@@ -1733,7 +1809,7 @@ export class Overlay {
 export function postParams(act, t) {
   const p = { glitch: 0, rgb: 0, vhs: 0, grain: 0, flash: 0, zoom: 1, blur: 0, pixel: 0, mirror: 0, bw: 0, sepia: 0, vig: 0, glow: 0, shake: [0, 0] };
   for (const c of act) {
-    if (c.type === 'fx' && c.kind === 'particles' && (c.fx === 'particulas' || c.fx === 'particulas2')) { // grano fino de «Partículas» y «Partículas 2»
+    if (c.type === 'fx' && c.kind === 'particles' && (c.fx === 'particulas' || c.fx === 'particulas2' || c.fx === 'particulas3')) { // grano fino de «Partículas» 1, 2 y 3
       const lg = t - c.start, gg = clamp(Math.min(1, lg / Math.max(0.01, c.fade), (c.dur - lg) / Math.max(0.01, c.fade)), 0, 1);
       p.grain = Math.max(p.grain, 0.09 * c.intensity * gg);
     }
