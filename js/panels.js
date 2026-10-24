@@ -7,12 +7,40 @@ import {
 } from './presets.js';
 import { icon } from './icons.js';
 import { XFADES, nextAdjacent } from './xfade.js';
+import { layerInfo, moveLayer, swapContent } from './layers.js';
 import { propsFor, valueAt, setValue, setKf, removeKf, kfAt, hasKf, kfTimes, anyKfAt, toggleAllKf, anyKf } from './kf.js';
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const fmtNum = (v, step) => Number(v).toFixed(step >= 1 ? 0 : step >= 0.1 ? 1 : 2);
 
 // Herramientas cuando no hay nada seleccionado
+// Selector de fuentes: cada nombre escrito con su propia letra, agrupadas por estilo
+function fontPicker(cur, onPick) {
+  const wrap = h('div', { class: 'field' });
+  const curF = FONTS.find((f) => f.f === cur);
+  wrap.append(h('label', {}, 'Tipo de letra', h('output', {}, curF ? curF.n : cur)));
+  const box = h('div', { class: 'font-picker' });
+  const cats = [...new Set(FONTS.map((f) => f.cat))];
+  for (const cat of cats) {
+    box.append(h('div', { class: 'font-cat' }, cat));
+    const grid = h('div', { class: 'font-grid' });
+    for (const f of FONTS.filter((x) => x.cat === cat)) {
+      const btn = h('button', { class: 'font-btn' + (f.f === cur ? ' on' : ''), style: `font-family:"${f.f}", serif`, title: f.n }, f.n);
+      btn.addEventListener('click', () => {
+        box.querySelectorAll('.font-btn.on').forEach((x) => x.classList.remove('on'));
+        btn.classList.add('on');
+        wrap.querySelector('output').textContent = f.n;
+        onPick(f.f);
+      });
+      grid.append(btn);
+    }
+    box.append(grid);
+  }
+  wrap.append(box);
+  requestAnimationFrame(() => { const on = box.querySelector('.font-btn.on'); if (on) box.scrollTop = Math.max(0, on.offsetTop - box.offsetTop - 60); });
+  return wrap;
+}
+
 const MAIN_TOOLS = [
   { id: 'media', n: 'Medios', i: 'media' },
   { id: 'audio', n: 'Audio', i: 'audio' },
@@ -32,17 +60,18 @@ const CLIP_TOOLS = {
   video: [A('split', 'Dividir', 'split', { act: 'split' }), A('speed', 'Velocidad', 'speed'), A('vol', 'Volumen', 'volume'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }),
     A('pos', 'Posición', 'pos'), A('opac', 'Opacidad', 'opacity'), A('filter', 'Filtros', 'filters'), A('adj', 'Ajustar', 'adjust'),
     A('motion', 'Movimiento', 'motion'), A('xfade', 'Transición', 'trans'), A('trans', 'Entrada/salida', 'anim'), A('mask', 'Máscara', 'mask'), A('key', 'Croma', 'chroma'),
+    A('layer', 'Capas', 'swap'), A('replace', 'Sustituir', 'replace', { act: 'replace' }),
     A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' }), A('all', 'Todo', 'all')],
   text: [A('txt', 'Editar', 'edit'), A('tstyle', 'Estilo', 'style'), A('tpos', 'Posición', 'pos'), A('tanim', 'Animación', 'anim'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }),
     A('split', 'Dividir', 'split', { act: 'split' }), A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' }), A('all', 'Todo', 'all')],
-  fx: [A('fxp', 'Ajustes', 'adjust'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }), A('split', 'Dividir', 'split', { act: 'split' }), A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' })],
-  audio: [A('vol', 'Volumen', 'volume'), A('speed', 'Velocidad', 'speed'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }), A('split', 'Dividir', 'split', { act: 'split' }),
+  fx: [A('fxp', 'Ajustes', 'adjust'), A('replace', 'Sustituir', 'replace', { act: 'replace' }), A('kf', 'Keyframes', 'kf', { cls: 'kft' }), A('split', 'Dividir', 'split', { act: 'split' }), A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' })],
+  audio: [A('vol', 'Volumen', 'volume'), A('replace', 'Sustituir', 'replace', { act: 'replace' }), A('speed', 'Velocidad', 'speed'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }), A('split', 'Dividir', 'split', { act: 'split' }),
     A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' })],
 };
 CLIP_TOOLS.image = CLIP_TOOLS.video.filter((t) => t.id !== 'speed' && t.id !== 'vol');
 const DEFAULT_SEC = { video: 'pos', image: 'pos', text: 'txt', fx: 'fxp', audio: 'vol' };
 const MAIN_IDS = new Set(MAIN_TOOLS.map((t) => t.id).filter((id) => id !== 'filter' && id !== 'adj'));
-const TITLES = { all: 'Todos los ajustes', kf: 'Keyframes', fxp: 'Efecto', txt: 'Texto', tstyle: 'Estilo del texto', tpos: 'Posición', tanim: 'Animación', pos: 'Posición y tamaño', opac: 'Opacidad y fusión', filter: 'Filtros', adj: 'Ajustar color', motion: 'Movimiento', trans: 'Entrada y salida', xfade: 'Transición con el siguiente clip', mask: 'Recorte y máscara', key: 'Pantalla verde (croma)', speed: 'Velocidad', vol: 'Volumen y sonido' };
+const TITLES = { all: 'Todos los ajustes', kf: 'Keyframes', fxp: 'Efecto', txt: 'Texto', tstyle: 'Estilo del texto', tpos: 'Posición', tanim: 'Animación', pos: 'Posición y tamaño', opac: 'Opacidad y fusión', filter: 'Filtros', adj: 'Ajustar color', motion: 'Movimiento', trans: 'Entrada y salida', xfade: 'Transición con el siguiente clip', mask: 'Recorte y máscara', key: 'Pantalla verde (croma)', speed: 'Velocidad', vol: 'Volumen y sonido', layer: 'Capas: qué va encima' };
 
 export class Panels {
   constructor(app) {
@@ -148,6 +177,7 @@ export class Panels {
     if (t.act === 'split') { if (!splitClips(ids, state.time).length) toast('Coloca el cabezal dentro del clip para dividirlo'); return; }
     if (t.act === 'dup') { duplicateClips(ids); return; }
     if (t.act === 'del') { removeClips(ids); return; }
+    if (t.act === 'replace') { const c = selectedClip(); if (c) this.app.replaceClip(c); return; }
     if (this.isOpen() && this.tool === t.id && !this.wideMq.matches) { this.close(); return; }
     this.open(t.id);
   }
@@ -414,6 +444,20 @@ export class Panels {
       b.append(sec('adj', 'Ajustar color', '🎚️', adjBox,
         h('button', { class: 'btn block', style: 'margin-top:12px', onclick: () => { c.adj = { ...ADJ_DEFAULT }; live(); done(); this.render(); } }, '↺ Restablecer')));
 
+      if (!multi) {
+        const li = layerInfo(c);
+        const isOv = c.lane === 'overlay';
+        const nm = (k) => { const m = state.media.get(k.media); return (m && m.name) || (k.type === 'image' ? 'foto' : 'vídeo'); };
+        b.append(sec('layer', 'Capas: qué va encima', '🗂️',
+          h('p', { class: 'hint' }, li.total > 1 ? `En este momento hay ${li.total} imágenes una encima de otra. Esta es la capa ${li.pos} (la 1 es la de más abajo).` : 'En este momento no hay otro vídeo o foto debajo ni encima de este clip. Coloca el cabezal donde se juntan.'),
+          li.below ? h('button', { class: 'btn block accent', style: 'margin-top:8px', onclick: () => { if (swapContent(c, li.below)) { toast('Intercambiados ✓'); this.render(); } } }, '⇅ Intercambiar con el de debajo (' + nm(li.below) + ')') : null,
+          li.above ? h('button', { class: 'btn block accent', style: 'margin-top:8px', onclick: () => { if (swapContent(c, li.above)) { toast('Intercambiados ✓'); this.render(); } } }, '⇅ Intercambiar con el de encima (' + nm(li.above) + ')') : null,
+          isOv ? h('div', { class: 'two', style: 'margin-top:8px' },
+            h('button', { class: 'btn', onclick: () => { if (moveLayer(c, 1)) this.render(); else toast('Ya está en la capa de más arriba'); } }, '⬆ Subir capa'),
+            h('button', { class: 'btn', onclick: () => { if (moveLayer(c, -1)) this.render(); else toast('Ya está justo encima del vídeo principal'); } }, '⬇ Bajar capa')) : null,
+          h('p', { class: 'hint', style: 'margin-top:8px' }, 'Intercambiar cambia el vídeo o la foto que se ve en cada sitio: cada uno mantiene su tamaño, posición y efectos.')));
+      }
+
       b.append(sec('motion', 'Movimiento', '🎥',
         chips(MOTIONS, c.motion.type, (v) => { c.motion.type = v; live(); done(); }),
         S('Intensidad', c.motion, 'amount', 0, 1, 0.01, pct)));
@@ -491,7 +535,7 @@ export class Panels {
         ...timing));
 
       b.append(sec('tstyle', 'Estilo', '🎨',
-        selectCtl('Tipo de letra', FONTS.map((f) => ({ id: f.f, n: f.n })), c.font, (v) => { c.font = v; live(); done(); }),
+        fontPicker(c.font, (v) => { c.font = v; live(); done(); }),
         K('size'),
         h('div', { class: 'field' }, h('label', {}, 'Grosor'), chips([{ id: 400, n: 'Normal' }, { id: 700, n: 'Negrita' }, { id: 900, n: 'Extra' }], c.weight, (v) => { c.weight = v; live(); done(); })),
         h('div', { class: 'two' }, toggle('Cursiva', c.italic, (v) => { c.italic = v; live(); done(); }), toggle('MAYÚSCULAS', c.upper, (v) => { c.upper = v; live(); done(); })),

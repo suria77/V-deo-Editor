@@ -227,6 +227,7 @@ export function computeTransform(c, lt, W, H, srcW, srcH, xf, tAbs = 0) {
   let lod = c.adj.blur * 6;
   let wipe = [1, 0, 1];
   let flash = 0;
+  let dim = 1;
   const u = clamp(lt / c.dur, 0, 1);
   const a = c.motion.amount;
   switch (c.motion.type) {
@@ -291,6 +292,21 @@ export function computeTransform(c, lt, W, H, srcW, srcH, xf, tAbs = 0) {
         break;
       }
       case 'flash': if (!out) alpha *= clamp((p - 0.3) / 0.4, 0, 1); flash += Math.pow(Math.sin(p * Math.PI), 2) * 0.6; lod += Math.sin(p * Math.PI) * 1.5; break;
+      case 'polvo': if (!out) alpha *= clamp((p - 0.03) / 0.42, 0, 1); break;
+      case 'rafaga': {
+        // la imagen que sale se aclara bajo la luz; la que entra aparece tras el blanco
+        if (out) { flash += 0.2 * clamp(p / 0.2, 0, 1); alpha *= 1 - clamp((p - 0.14) / 0.16, 0, 1); }
+        else { if (p < 0.62) alpha = 0; flash += 0.25 * clamp((0.95 - p) / 0.3, 0, 1); }
+        break;
+      }
+      case 'blancoSuave': {
+        // fundido lineal a blanco y de vuelta (mezcla, no suma: así el blanco es limpio)
+        const k = p < 0.5 ? p / 0.5 : (1 - p) / 0.5;
+        if (out) { if (p >= 0.5) alpha = 0; } else if (p < 0.5) alpha = 0;
+        const kk = Math.min(0.999, k);
+        dim = 1 - kk; flash += kk / (1 - kk);
+        break;
+      }
       case 'velo': {
         // velo de luz: la imagen se aclara como con bruma, se funde con la siguiente y la luz se retira despacio
         const lift = p < 0.38 ? Math.pow(p / 0.38, 1.5) : Math.pow(1 - (p - 0.38) / 0.62, 1.7);
@@ -331,7 +347,7 @@ export function computeTransform(c, lt, W, H, srcW, srcH, xf, tAbs = 0) {
     }
   }
   return {
-    cx, cy, rot, alpha, lod, wipe, flash,
+    cx, cy, rot, alpha, lod, wipe, flash, dim,
     w: srcW * fitS * scale, h: srcH * fitS * scale, fitS, scale,
   };
 }
@@ -569,7 +585,7 @@ export class Renderer {
     const xf = xfadeAt(project, t);
     const vis = project.clips.filter((c) => (c.type === 'video' || c.type === 'image') && ((t >= c.start - 1e-6 && t < c.start + c.dur) || xf.has(c.id)));
     const order = { video: 0, overlay: 1 };
-    vis.sort((a, b) => order[a.lane] - order[b.lane] || a.start - b.start);
+    vis.sort((a, b) => order[a.lane] - order[b.lane] || (a.z || 0) - (b.z || 0) || a.start - b.start);
     for (const c of vis) {
       const m = media.get(c.media);
       if (!m) continue;

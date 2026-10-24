@@ -95,22 +95,104 @@ export const MASKS = [
 ];
 
 export const FONTS = [
-  { f: 'Montserrat', n: 'Montserrat', g: true },
-  { f: 'Figtree', n: 'Figtree (tipo CapCut)', g: true },
-  { f: 'Poppins', n: 'Poppins', g: true },
-  { f: 'Anton', n: 'Anton (impacto)', g: true },
-  { f: 'Bebas Neue', n: 'Bebas Neue', g: true },
-  { f: 'Playfair Display', n: 'Playfair Display', g: true },
-  { f: 'Cinzel', n: 'Cinzel (clásica)', g: true },
-  { f: 'Cormorant Garamond', n: 'Cormorant', g: true },
-  { f: 'Pacifico', n: 'Pacifico (manuscrita)', g: true },
-  { f: 'Dancing Script', n: 'Dancing Script', g: true },
-  { f: 'Fraunces', n: 'Fraunces', g: true },
-  { f: 'Sora', n: 'Sora', g: true },
-  { f: 'Caveat', n: 'Caveat (a mano)', g: true },
-  { f: 'Arial', n: 'Arial', g: false },
-  { f: 'Georgia', n: 'Georgia', g: false },
+  { f: 'Montserrat', n: 'Montserrat', cat: 'Básicas', g: true },
+  { f: 'Figtree', n: 'Figtree (tipo CapCut)', cat: 'Básicas', g: true },
+  { f: 'Poppins', n: 'Poppins', cat: 'Básicas', g: true },
+  { f: 'Sora', n: 'Sora', cat: 'Básicas', g: true },
+  { f: 'Arial', n: 'Arial', cat: 'Básicas', g: false },
+  { f: 'Georgia', n: 'Georgia', cat: 'Básicas', g: false },
+  { f: 'Italianno', n: 'Italianno', cat: 'Caligráficas', g: true, q: 'Italianno' },
+  { f: 'Alex Brush', n: 'Alex Brush', cat: 'Caligráficas', g: true, q: 'Alex+Brush' },
+  { f: 'Great Vibes', n: 'Great Vibes', cat: 'Caligráficas', g: true, q: 'Great+Vibes' },
+  { f: 'Pinyon Script', n: 'Pinyon Script', cat: 'Caligráficas', g: true, q: 'Pinyon+Script' },
+  { f: 'Parisienne', n: 'Parisienne', cat: 'Caligráficas', g: true, q: 'Parisienne' },
+  { f: 'Allura', n: 'Allura', cat: 'Caligráficas', g: true, q: 'Allura' },
+  { f: 'Tangerine', n: 'Tangerine', cat: 'Caligráficas', g: true, q: 'Tangerine:wght@400;700' },
+  { f: 'Mea Culpa', n: 'Mea Culpa', cat: 'Caligráficas', g: true, q: 'Mea+Culpa' },
+  { f: 'Ephesis', n: 'Ephesis', cat: 'Caligráficas', g: true, q: 'Ephesis' },
+  { f: 'Ballet', n: 'Ballet', cat: 'Caligráficas', g: true, q: 'Ballet' },
+  { f: 'Monsieur La Doulaise', n: 'Monsieur La Doulaise', cat: 'Caligráficas', g: true, q: 'Monsieur+La+Doulaise' },
+  { f: 'Mrs Saint Delafield', n: 'Mrs Saint Delafield', cat: 'Caligráficas', g: true, q: 'Mrs+Saint+Delafield' },
+  { f: 'Petit Formal Script', n: 'Petit Formal Script', cat: 'Caligráficas', g: true, q: 'Petit+Formal+Script' },
+  { f: 'Imperial Script', n: 'Imperial Script', cat: 'Caligráficas', g: true, q: 'Imperial+Script' },
+  { f: 'Corinthia', n: 'Corinthia', cat: 'Caligráficas', g: true, q: 'Corinthia' },
+  { f: 'Luxurious Script', n: 'Luxurious Script', cat: 'Caligráficas', g: true, q: 'Luxurious+Script' },
+  { f: 'Bonheur Royale', n: 'Bonheur Royale', cat: 'Caligráficas', g: true, q: 'Bonheur+Royale' },
+  { f: 'Lavishly Yours', n: 'Lavishly Yours', cat: 'Caligráficas', g: true, q: 'Lavishly+Yours' },
+  { f: 'Birthstone', n: 'Birthstone', cat: 'Caligráficas', g: true, q: 'Birthstone' },
+  { f: 'WindSong', n: 'WindSong', cat: 'Caligráficas', g: true, q: 'WindSong' },
+  { f: 'Ms Madi', n: 'Ms Madi', cat: 'Caligráficas', g: true, q: 'Ms+Madi' },
+  { f: 'Grey Qo', n: 'Grey Qo', cat: 'Caligráficas', g: true, q: 'Grey+Qo' },
+  { f: 'Estonia', n: 'Estonia', cat: 'Caligráficas', g: true, q: 'Estonia' },
+  { f: 'Moon Dance', n: 'Moon Dance', cat: 'Caligráficas', g: true, q: 'Moon+Dance' },
+  { f: 'Fleur De Leah', n: 'Fleur De Leah', cat: 'Caligráficas', g: true, q: 'Fleur+De+Leah' },
+  { f: 'Hurricane', n: 'Hurricane', cat: 'Caligráficas', g: true, q: 'Hurricane' },
+  { f: 'Dancing Script', n: 'Dancing Script', cat: 'Manuscritas', g: true },
+  { f: 'Pacifico', n: 'Pacifico', cat: 'Manuscritas', g: true },
+  { f: 'Caveat', n: 'Caveat (a mano)', cat: 'Manuscritas', g: true },
+  { f: 'Sacramento', n: 'Sacramento', cat: 'Manuscritas', g: true, q: 'Sacramento' },
+  { f: 'Kaushan Script', n: 'Kaushan Script', cat: 'Manuscritas', g: true, q: 'Kaushan+Script' },
+  { f: 'Satisfy', n: 'Satisfy', cat: 'Manuscritas', g: true, q: 'Satisfy' },
+  { f: 'Yellowtail', n: 'Yellowtail', cat: 'Manuscritas', g: true, q: 'Yellowtail' },
+  { f: 'Courgette', n: 'Courgette', cat: 'Manuscritas', g: true, q: 'Courgette' },
+  { f: 'Merienda', n: 'Merienda', cat: 'Manuscritas', g: true, q: 'Merienda:wght@400;700' },
+  { f: 'Sansita Swashed', n: 'Sansita Swashed', cat: 'Manuscritas', g: true, q: 'Sansita+Swashed:wght@400;700' },
+  { f: 'Charm', n: 'Charm', cat: 'Manuscritas', g: true, q: 'Charm:wght@400;700' },
+  { f: 'Lobster', n: 'Lobster', cat: 'Manuscritas', g: true, q: 'Lobster' },
+  { f: 'Amatic SC', n: 'Amatic SC', cat: 'Manuscritas', g: true, q: 'Amatic+SC:wght@400;700' },
+  { f: 'Solitreo', n: 'Solitreo', cat: 'Manuscritas', g: true, q: 'Solitreo' },
+  { f: 'Playfair Display', n: 'Playfair Display', cat: 'Elegantes', g: true },
+  { f: 'Cormorant Garamond', n: 'Cormorant', cat: 'Elegantes', g: true },
+  { f: 'Cinzel', n: 'Cinzel (clásica)', cat: 'Elegantes', g: true },
+  { f: 'Fraunces', n: 'Fraunces', cat: 'Elegantes', g: true },
+  { f: 'Cinzel Decorative', n: 'Cinzel Decorative', cat: 'Elegantes', g: true, q: 'Cinzel+Decorative:wght@400;700' },
+  { f: 'Libre Caslon Text', n: 'Caslon', cat: 'Elegantes', g: true, q: 'Libre+Caslon+Text:wght@400;700' },
+  { f: 'EB Garamond', n: 'Garamond', cat: 'Elegantes', g: true, q: 'EB+Garamond:ital,wght@0,400;0,700;1,400' },
+  { f: 'Libre Baskerville', n: 'Baskerville', cat: 'Elegantes', g: true, q: 'Libre+Baskerville:wght@400;700' },
+  { f: 'Bodoni Moda', n: 'Bodoni', cat: 'Elegantes', g: true, q: 'Bodoni+Moda:wght@400;700' },
+  { f: 'Oranienbaum', n: 'Oranienbaum', cat: 'Elegantes', g: true, q: 'Oranienbaum' },
+  { f: 'Marcellus', n: 'Marcellus', cat: 'Elegantes', g: true, q: 'Marcellus' },
+  { f: 'Forum', n: 'Forum', cat: 'Elegantes', g: true, q: 'Forum' },
+  { f: 'Italiana', n: 'Italiana', cat: 'Elegantes', g: true, q: 'Italiana' },
+  { f: 'Gilda Display', n: 'Gilda Display', cat: 'Elegantes', g: true, q: 'Gilda+Display' },
+  { f: 'Prata', n: 'Prata', cat: 'Elegantes', g: true, q: 'Prata' },
+  { f: 'DM Serif Display', n: 'DM Serif Display', cat: 'Elegantes', g: true, q: 'DM+Serif+Display' },
+  { f: 'Yeseva One', n: 'Yeseva One', cat: 'Elegantes', g: true, q: 'Yeseva+One' },
+  { f: 'Luxurious Roman', n: 'Luxurious Roman', cat: 'Elegantes', g: true, q: 'Luxurious+Roman' },
+  { f: 'Lora', n: 'Lora', cat: 'Elegantes', g: true, q: 'Lora:wght@400;700' },
+  { f: 'Cardo', n: 'Cardo', cat: 'Elegantes', g: true, q: 'Cardo:wght@400;700' },
+  { f: 'Uncial Antiqua', n: 'Uncial (antigua)', cat: 'Elegantes', g: true, q: 'Uncial+Antiqua' },
+  { f: 'MedievalSharp', n: 'Medieval', cat: 'Elegantes', g: true, q: 'MedievalSharp' },
+  { f: 'Raleway', n: 'Raleway', cat: 'Modernas', g: true, q: 'Raleway:wght@400;700;900' },
+  { f: 'Josefin Sans', n: 'Josefin Sans', cat: 'Modernas', g: true, q: 'Josefin+Sans:wght@400;700' },
+  { f: 'Quicksand', n: 'Quicksand', cat: 'Modernas', g: true, q: 'Quicksand:wght@400;700' },
+  { f: 'Comfortaa', n: 'Comfortaa', cat: 'Modernas', g: true, q: 'Comfortaa:wght@400;700' },
+  { f: 'Poiret One', n: 'Poiret One', cat: 'Modernas', g: true, q: 'Poiret+One' },
+  { f: 'Julius Sans One', n: 'Julius Sans One', cat: 'Modernas', g: true, q: 'Julius+Sans+One' },
+  { f: 'Outfit', n: 'Outfit', cat: 'Modernas', g: true, q: 'Outfit:wght@400;700;900' },
+  { f: 'Syne', n: 'Syne', cat: 'Modernas', g: true, q: 'Syne:wght@400;700' },
+  { f: 'Oswald', n: 'Oswald', cat: 'Modernas', g: true, q: 'Oswald:wght@400;700' },
+  { f: 'Special Elite', n: 'Máquina de escribir', cat: 'Modernas', g: true, q: 'Special+Elite' },
+  { f: 'Anton', n: 'Anton (impacto)', cat: 'Impacto', g: true },
+  { f: 'Bebas Neue', n: 'Bebas Neue', cat: 'Impacto', g: true },
+  { f: 'Righteous', n: 'Righteous', cat: 'Impacto', g: true, q: 'Righteous' },
+  { f: 'Abril Fatface', n: 'Abril Fatface', cat: 'Impacto', g: true, q: 'Abril+Fatface' },
+  { f: 'Bungee', n: 'Bungee', cat: 'Impacto', g: true, q: 'Bungee' },
+  { f: 'Monoton', n: 'Monoton', cat: 'Impacto', g: true, q: 'Monoton' },
 ];
+
+// Hoja de estilos de cada fuente extra (una por fuente: si una falla, las demás siguen funcionando)
+export function loadExtraFonts() {
+  if (typeof document === 'undefined' || document.getElementById('xfonts')) return;
+  const mark = document.createElement('meta'); mark.id = 'xfonts'; document.head.appendChild(mark);
+  for (const f of FONTS) {
+    if (!f.q) continue;
+    const l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = `https://fonts.googleapis.com/css2?family=${f.q}&display=swap`;
+    document.head.appendChild(l);
+  }
+}
 
 export const GOOGLE_FONTS_URL =
   'https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Caveat:wght@400;700&family=Cinzel:wght@400;700;900&family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400&family=Dancing+Script:wght@400;700&family=Figtree:wght@400;600;700;900&family=Fraunces:wght@400;700;900&family=Montserrat:ital,wght@0,400;0,700;0,900;1,700&family=Pacifico&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,700&family=Poppins:wght@400;700;900&family=Sora:wght@400;700&display=swap';
@@ -133,6 +215,9 @@ export const TEXT_IN = [
   { id: 'perroForma', n: 'Perro forma', dur: 0.42 },
   { id: 'apertura', n: 'Apertura', dur: 1.8 },
   { id: 'luciernaga', n: 'Luciérnagas', dur: 3 },
+  { id: 'disolver', n: 'Polvo de letras', dur: 2.4 },
+  { id: 'estela', n: 'Estela de luz', dur: 2.8 },
+  { id: 'hiloDorado', n: 'Hilo dorado', dur: 3 },
 ];
 
 export const TEXT_OUT = [
@@ -168,6 +253,9 @@ export const TEXT_STYLES = [
   { n: 'Perro forma', css: 'font-family:Figtree;font-weight:600;color:#fff;text-shadow:0 0 10px #fff', p: { font: 'Figtree', weight: 600, size: 0.06, color: '#ffffff', color2: '', stroke: { w: 0, color: '#000000' }, shadow: { blur: 0, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'perroForma', dur: 0.42 }, outAnim: { type: 'fade', dur: 0.3 } } },
   { n: 'Apertura', css: 'font-family:Figtree;font-weight:600;color:#fff;-webkit-mask-image:linear-gradient(90deg,transparent,#000 30%,#000 70%,transparent)', p: { font: 'Figtree', weight: 600, size: 0.06, color: '#ffffff', color2: '', stroke: { w: 0, color: '#000000' }, shadow: { blur: 0, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'apertura', dur: 1.8 }, outAnim: { type: 'fade', dur: 0.3 } } },
   { n: 'Luciérnagas', css: 'font-family:Figtree;font-weight:600;color:#fff;text-shadow:0 0 12px #e8b07a', p: { font: 'Figtree', weight: 600, size: 0.06, color: '#ffffff', color2: '', stroke: { w: 0, color: '#000000' }, shadow: { blur: 0, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'luciernaga', dur: 3 }, outAnim: { type: 'fade', dur: 0.3 } } },
+  { n: 'Polvo de letras', css: 'font-family:Figtree;font-weight:600;color:#fff;text-shadow:0 0 6px #fff', p: { font: 'Figtree', weight: 600, size: 0.06, color: '#ffffff', color2: '', stroke: { w: 0, color: '#000000' }, shadow: { blur: 0, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'disolver', dur: 2.4 }, outAnim: { type: 'fade', dur: 0.3 } } },
+  { n: 'Estela de luz', css: 'font-family:Figtree;font-weight:600;color:#fff;text-shadow:6px 0 10px #fff', p: { font: 'Figtree', weight: 600, size: 0.06, color: '#ffffff', color2: '', stroke: { w: 0, color: '#000000' }, shadow: { blur: 0, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'estela', dur: 2.8 }, outAnim: { type: 'fade', dur: 0.3 } } },
+  { n: 'Hilo dorado', css: 'font-family:Figtree;font-weight:600;color:#f3c26a;text-shadow:0 0 8px #e0a040', p: { font: 'Figtree', weight: 600, size: 0.06, color: '#ffffff', color2: '', stroke: { w: 0, color: '#000000' }, shadow: { blur: 0, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'hiloDorado', dur: 3 }, outAnim: { type: 'fade', dur: 0.3 } } },
   { n: 'Arcoíris', css: 'font-family:Poppins;font-weight:900;background:linear-gradient(90deg,#f33,#fc0,#3c3,#39f,#c3f);-webkit-background-clip:text;color:transparent', p: { font: 'Poppins', weight: 900, size: 0.08, color: '#ffffff', color2: '', stroke: { w: 0.006, color: '#000000' }, shadow: { blur: 0.2, color: '#000000' }, bg: { on: false, color: '#000000', alpha: 0.5 }, inAnim: { type: 'lettersRise', dur: 0.9 }, outAnim: { type: 'fade', dur: 0.4 }, loop: { type: 'rainbow', amount: 0.7 } } },
 ];
 
@@ -184,6 +272,10 @@ export const PARTICLES = [
   { id: 'perroForma', n: 'Perro forma', i: '🫧', cat: 'luz', add: true, color: '#e7a3a0', size: 1, speed: 1, intensity: 0.8 },
   { id: 'ascuas', n: 'Ascuas', i: '🔴', cat: 'luz', add: true, color: '#e8461c', size: 1, speed: 1, intensity: 0.8 },
   { id: 'luciernagas', n: 'Luciérnagas', i: '🟠', cat: 'luz', add: true, color: '#d9861c', size: 1, speed: 1, intensity: 0.8 },
+  { id: 'violeta', n: 'Bokeh violeta', i: '🟣', cat: 'luz', add: true, color: '#a046d8', size: 1, speed: 1, intensity: 0.8 },
+  { id: 'petalosRosa', n: 'Pétalos de rosa', i: '🌹', cat: 'luz', add: false, color: '#e8707e', size: 1, speed: 1, intensity: 0.8 },
+  { id: 'polvoLuz', n: 'Polvo de luz', i: '🤍', cat: 'luz', add: true, color: '#fff2e0', size: 1, speed: 1, intensity: 0.8 },
+  { id: 'atardecer', n: 'Atardecer estelar', i: '🌇', cat: 'luz', add: true, color: '#ff9e78', size: 1, speed: 1, intensity: 0.8 },
   // --- ambiente ---
   { id: 'fire', n: 'Fuego', i: '🔥', add: true, color: '#ff7a1a', size: 1, speed: 1, intensity: 0.7 },
   { id: 'embers', n: 'Brasas', i: '✨', add: true, color: '#ff9a3c', size: 1, speed: 1, intensity: 0.6 },

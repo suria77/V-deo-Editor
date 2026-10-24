@@ -2,6 +2,7 @@
 import { PARTICLES } from './presets.js';
 import { bus } from './state.js';
 import { animClip } from './kf.js';
+import { xfadeAt } from './xfade.js';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 export const textBounds = new Map();
@@ -65,6 +66,39 @@ function disc(ctx, rgb, x, y, r, a) {
   if (a <= 0.003 || r < 0.5) return;
   ctx.globalAlpha = clamp(a, 0, 1);
   ctx.drawImage(discSprite(rgb), x - r, y - r, r * 2, r * 2);
+}
+
+
+// pétalo (sprite cacheado): nítido o desenfocado
+const petalCache = new Map();
+function petalSprite(c1, c2, blurred) {
+  const key = c1.join(',') + '|' + blurred;
+  let s = petalCache.get(key);
+  if (s) return s;
+  const draw = (w, h) => {
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const g = cv.getContext('2d');
+    const gr = g.createLinearGradient(0, 0, w, h);
+    gr.addColorStop(0, css(c2, 1)); gr.addColorStop(0.55, css(c1, 1)); gr.addColorStop(1, css(mixRgb(c1, [120, 30, 50], 0.35), 1));
+    g.fillStyle = gr;
+    g.beginPath();
+    g.moveTo(w * 0.5, h * 0.02);
+    g.bezierCurveTo(w * 1.05, h * 0.3, w * 0.95, h * 0.85, w * 0.5, h * 0.98);
+    g.bezierCurveTo(w * 0.15, h * 0.8, w * 0.02, h * 0.35, w * 0.5, h * 0.02);
+    g.fill();
+    g.globalAlpha = 0.5; g.strokeStyle = css(c2, 1); g.lineWidth = Math.max(1, w * 0.05);
+    g.beginPath(); g.moveTo(w * 0.5, h * 0.08); g.quadraticCurveTo(w * 0.62, h * 0.5, w * 0.48, h * 0.92); g.stroke();
+    return cv;
+  };
+  if (!blurred) s = draw(48, 96);
+  else {
+    const small = draw(10, 20);
+    s = document.createElement('canvas'); s.width = 48; s.height = 96;
+    const g = s.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    g.drawImage(small, 6, 12, 36, 72);
+  }
+  petalCache.set(key, s);
+  return s;
 }
 
 // ---------------- Partículas ----------------
@@ -552,6 +586,116 @@ function particles(ctx, c, t, lt, W, H, g) {
       }
       break;
     }
+    case 'violeta': {
+      // Bokeh violeta: un velo de luz violeta que entra y sale por la derecha y discos de colores pastel
+      const vio = base;
+      const pink = mixRgb(base, [235, 110, 200], 0.55);
+      const cols = [mixRgb(base, [210, 120, 60], 0.75), mixRgb(base, [130, 80, 220], 0.4), pink, mixRgb(base, [170, 50, 60], 0.75), mixRgb(base, [240, 170, 120], 0.7)];
+      const cyc = 3.2;
+      const lk = 0.5 - 0.5 * Math.cos((T / cyc) * Math.PI * 2);
+      const lk2 = 0.5 - 0.5 * Math.cos((T / cyc) * Math.PI * 2 - 0.9);
+      blob(ctx, vio, W * 1.0, H * 0.4, W * 1.8 * sz, H * 1.5 * sz, 0.85 * lk * I * g);
+      blob(ctx, pink, W * 0.95, H * 0.62, W * 0.9 * sz, H * 0.8 * sz, 0.35 * lk2 * I * g);
+      blob(ctx, mixRgb(vio, [255, 255, 255], 0.35), W * 0.5, -H * 0.04, W * 0.8 * sz, H * 0.45 * sz, 0.55 * lk2 * I * g);
+      for (let i = 0; i < N(9); i++) {
+        const r1 = rnd(i, 301, seed), r2 = rnd(i, 302, seed), r3 = rnd(i, 303, seed), r4 = rnd(i, 304, seed);
+        const life = 3.5 + 3 * r1;
+        const q = T / life + r2, cy = Math.floor(q), u = fract(q);
+        const x = W * (rnd(i + cy * 17, 305, seed + 3) * 1.1 - 0.05) + (r3 - 0.5) * W * 0.06 * u;
+        const y = H * (rnd(i + cy * 17, 306, seed + 5) * 1.05 - 0.02) - H * 0.03 * u;
+        const rad = (0.065 + 0.07 * r4) * H * sz;
+        const a = Math.pow(Math.sin(u * Math.PI), 0.7) * (0.32 + 0.2 * r3) * I * g;
+        const col = cols[Math.floor(rnd(i + cy * 17, 307, seed) * cols.length)];
+        disc(ctx, col, x, y, rad, a);
+        ctx.globalAlpha = clamp(a * 0.45, 0, 1);
+        ctx.strokeStyle = css(mixRgb(col, [255, 255, 255], 0.3), 1); ctx.lineWidth = 2 * S;
+        ctx.beginPath(); ctx.arc(x, y, rad * 0.86, 0, Math.PI * 2); ctx.stroke();
+      }
+      break;
+    }
+    case 'petalosRosa': {
+      // Pétalos de rosa que caen girando; algunos muy cerca de la cámara (desenfocados) y otros lejos
+      const pal = mixRgb(base, [255, 205, 205], 0.45);
+      for (let i = 0; i < N(38); i++) {
+        const r1 = rnd(i, 401, seed), r2 = rnd(i, 402, seed), r3 = rnd(i, 403, seed), r4 = rnd(i, 404, seed);
+        const layer = r4 < 0.13 ? 2 : r4 < 0.35 ? 0 : 1; // 0 lejos, 1 medio, 2 cerca
+        const spd = (layer === 2 ? 0.2 : layer === 1 ? 0.11 : 0.06) * (0.8 + 0.4 * r1);
+        const fall = T * spd + r2;
+        const cyc = Math.floor(fall), u = fract(fall);
+        const y = -H * 0.1 + u * H * 1.2;
+        const x = W * (rnd(i, 405 + cyc * 3, seed) * 1.1 - 0.05) + Math.sin(T * (0.7 + r3) + r1 * 9) * W * 0.03 - u * W * 0.06;
+        const size = (layer === 2 ? 100 + 60 * r3 : layer === 1 ? 32 + 24 * r3 : 16 + 10 * r3) * S * sz;
+        const spin = T * (1 + 2 * r1) * (r2 > 0.5 ? 1 : -1) + r3 * 7;
+        const flip = 0.25 + 0.75 * Math.abs(Math.cos(T * (0.8 + 1.5 * r3) + r1 * 5));
+        const a = (layer === 0 ? 0.35 : layer === 2 ? 0.6 : 0.95) * g * Math.min(1, I * 1.25);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(spin); ctx.scale(flip, 1);
+        ctx.globalAlpha = clamp(a, 0, 1);
+        const spr = petalSprite(base, pal, layer === 1 ? 0 : 1);
+        ctx.drawImage(spr, -size / 2, -size * 0.8, size, size * 1.6);
+        ctx.restore();
+      }
+      break;
+    }
+    case 'polvoLuz': {
+      // Polvo de luz: motas finas que flotan y titilan, luces blancas desenfocadas que se encienden y un brillo cálido arriba
+      const wh = mixRgb(base, [255, 255, 255], 0.3);
+      const warm = mixRgb(base, [255, 205, 150], 0.6);
+      const top = ctx.createLinearGradient(0, 0, 0, H * 0.3);
+      ctx.globalAlpha = 1; ctx.fillStyle = css(mixRgb(base, [160, 120, 120], 0.6), 0.07 * I * g); ctx.fillRect(0, 0, W, H);
+      top.addColorStop(0, css(mixRgb(base, [150, 90, 70], 0.8), 0.22 * I * g)); top.addColorStop(1, css([120, 40, 40], 0));
+      ctx.globalAlpha = 1; ctx.fillStyle = top; ctx.fillRect(0, 0, W, H * 0.3);
+      for (let i = 0; i < N(3); i++) {
+        const r1 = rnd(i, 501, seed), r2 = rnd(i, 502, seed);
+        const life = 2.6 + 1.2 * r1;
+        const q = T / life + r2, cy = Math.floor(q), u = fract(q);
+        const x = W * (0.1 + 0.8 * rnd(i, 503 + cy * 3, seed)), y = H * (0.25 + 0.75 * rnd(i, 504 + cy * 3, seed)) - H * 0.02 * u;
+        const rad = (0.11 + 0.04 * rnd(i, 505, seed)) * H * sz;
+        const a = Math.pow(Math.sin(u * Math.PI), 1.2) * 0.4 * I * g;
+        disc(ctx, mixRgb(wh, [200, 190, 220], 0.4), x, y, rad, a);
+        blob(ctx, wh, x, y, rad * 0.25, rad * 0.25, a * 0.6);
+      }
+      for (let i = 0; i < N(6); i++) {
+        const r1 = rnd(i, 511, seed), r2 = rnd(i, 512, seed);
+        const life = 2 + 2 * r1;
+        const q = T / life + r2, cy = Math.floor(q), u = fract(q);
+        const x = W * rnd(i, 513 + cy * 3, seed), y = H * rnd(i, 514 + cy * 3, seed) - H * 0.03 * u;
+        const rad = (0.018 + 0.02 * rnd(i, 515 + cy, seed)) * H * sz;
+        disc(ctx, wh, x, y, rad, Math.sin(u * Math.PI) * 0.35 * I * g);
+      }
+      for (let i = 0; i < N(75); i++) {
+        const r1 = rnd(i, 521, seed), r2 = rnd(i, 522, seed), r3 = rnd(i, 523, seed), r4 = rnd(i, 524, seed);
+        const tw = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(T * (1.2 + 3 * r1) + r2 * 40), 2);
+        const x = W * fract(r3 + T * 0.01 * (r1 - 0.5)), y = H * fract(r4 - T * 0.012 * (0.2 + r2));
+        const s = (3 + 4 * r2 * r2) * S * sz;
+        const col = r1 > 0.6 ? warm : wh;
+        blob(ctx, col, x, y, s * 3, s * 3, 0.5 * tw * g);
+        blob(ctx, wh, x, y, s, s, 0.95 * tw * g);
+      }
+      break;
+    }
+    case 'atardecer': {
+      // Atardecer estelar: luz cálida que entra por la esquina inferior izquierda y estrellas blancas que titilan
+      const warm = base;
+      const mauve = mixRgb(base, [190, 150, 175], 0.75);
+      const br = 0.9 + 0.1 * Math.sin(T * 0.8);
+      ctx.globalAlpha = 1; ctx.fillStyle = css(mauve, 0.1 * I * g); ctx.fillRect(0, 0, W, H);
+      blob(ctx, mauve, W * 0.2, H * 0.85, W * 3 * sz, H * 2.6 * sz, 0.4 * I * g);
+      blob(ctx, warm, -W * 0.05, H * 1.05, W * 3.2 * sz, H * 2.8 * sz, 0.75 * I * g * br);
+      blob(ctx, mixRgb(warm, [255, 235, 200], 0.5), -W * 0.03, H * 1.03, W * 1.3 * sz, H * 1.1 * sz, 0.6 * I * g * br);
+      const st = [255, 244, 238];
+      for (let i = 0; i < N(40); i++) {
+        const r1 = rnd(i, 601, seed), r2 = rnd(i, 602, seed), r3 = rnd(i, 603, seed);
+        const life = 1.8 + 2.4 * r1;
+        const q = T / life + r2, cy = Math.floor(q), u = fract(q);
+        const x = W * rnd(i, 604 + cy * 3, seed), y = H * rnd(i, 605 + cy * 3, seed) - H * 0.015 * u;
+        const big = rnd(i, 606 + cy * 3, seed) > 0.85;
+        const s = (big ? 22 + 8 * r3 : 11 + 7 * r3) * S * sz;
+        const a = clamp(Math.sin(u * Math.PI) * 1.4, 0, 1) * g * Math.min(1, I * 1.25);
+        blob(ctx, st, x, y, s * 4, s * 4, a * 0.35);
+        disc(ctx, st, x, y, s, a * 0.95);
+      }
+      break;
+    }
     case 'fire': {
       const core = mixRgb(base, [255, 250, 220], 0.75), hot = mixRgb(base, [255, 220, 90], 0.5), mid = base, tail = base.map((v, k) => Math.round(v * (k === 0 ? 0.75 : 0.3)));
       const flick = 0.85 + 0.15 * Math.sin(T * 9.7) * Math.sin(T * 5.3);
@@ -867,9 +1011,10 @@ export function drawText(ctx, c, lt, W, H) {
   // «Perro forma»: el texto se dibuja aparte y luego se compone con estela, cortes, destello y rayo
   const pfOn = inA.type === 'perroForma' && lt < inA.dur;
   const apOn = inA.type === 'apertura' && lt < inA.dur;
+  const scFx = ['disolver', 'estela', 'hiloDorado'].includes(inA.type) && lt < inA.dur ? inA.type : null;
   const lcOn = inA.type === 'luciernaga' && lt < inA.dur;
   let dc = ctx, pfS = null;
-  if (pfOn || apOn) {
+  if (pfOn || apOn || scFx) {
     pfS = scratchFor(ctx.canvas.width, ctx.canvas.height);
     pfS.ctx.setTransform(1, 0, 0, 1, 0, 0);
     pfS.ctx.clearRect(0, 0, pfS.cv.width, pfS.cv.height);
@@ -983,6 +1128,12 @@ export function drawText(ctx, c, lt, W, H) {
   dc.restore();
   if (pfOn) perroForma(ctx, pfS.cv, lt / Math.max(0.05, inA.dur), lt, cx, cy, maxLW * scale, (lines.length * lh) * scale, px * scale);
   if (apOn) apertura(ctx, pfS, pIn, cx, maxLW * scale);
+  if (scFx) {
+    const box = { cx, cy, tw: maxLW * scale, th: lines.length * lh * scale, px: px * scale };
+    if (scFx === 'disolver') disolver(ctx, pfS, pIn, box);
+    else if (scFx === 'estela') estela(ctx, pfS, pIn, box);
+    else hiloDorado(ctx, pfS, pIn, lt, box);
+  }
   ctx.restore();
   return true;
 }
@@ -992,6 +1143,190 @@ function scratchFor(w, h) {
   if (!scratch.cv) { scratch.cv = document.createElement('canvas'); scratch.ctx = scratch.cv.getContext('2d'); }
   if (scratch.cv.width !== w || scratch.cv.height !== h) { scratch.cv.width = w; scratch.cv.height = h; }
   return scratch;
+}
+
+
+// --- utilidades para entradas de texto que se componen desde un lienzo aparte ---
+function textBox(sc, b, padX = 1.2, padY = 0.6) {
+  const CW = sc.cv.width, CH = sc.cv.height;
+  const x0 = clamp(Math.floor(b.cx - b.tw / 2 - b.px * padX), 0, CW - 1), x1 = clamp(Math.ceil(b.cx + b.tw / 2 + b.px * padX), 1, CW);
+  const y0 = clamp(Math.floor(b.cy - b.th / 2 - b.px * padY), 0, CH - 1), y1 = clamp(Math.ceil(b.cy + b.th / 2 + b.px * padY), 1, CH);
+  return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+}
+// deja visible solo una franja horizontal: transparente→opaco entre a y b, opaco→transparente entre c y d
+function maskX(c2, W, H, a, b, cc, d) {
+  c2.save();
+  c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.globalCompositeOperation = 'destination-in';
+  const lo = Math.min(a, b, cc, d) - 1, hi = Math.max(a, b, cc, d) + 1, span = hi - lo;
+  const gr = c2.createLinearGradient(lo, 0, hi, 0);
+  const st = (x) => clamp((x - lo) / span, 0, 1);
+  gr.addColorStop(0, 'rgba(0,0,0,0)');
+  gr.addColorStop(st(a), 'rgba(0,0,0,0)'); gr.addColorStop(Math.max(st(a), st(b)), 'rgba(0,0,0,1)');
+  gr.addColorStop(Math.max(st(b), st(cc)), 'rgba(0,0,0,1)'); gr.addColorStop(Math.max(st(cc), st(d)), 'rgba(0,0,0,0)');
+  gr.addColorStop(1, 'rgba(0,0,0,0)');
+  c2.fillStyle = gr; c2.fillRect(0, 0, W, H);
+  c2.clearRect(0, 0, Math.max(0, lo), H); c2.clearRect(hi, 0, W, H);
+  c2.restore();
+}
+const blurTmp = { a: null, b: null };
+function blurredCopy(src, r, fx, fy) {
+  // desenfoque barato: se reduce y se vuelve a ampliar con suavizado (funciona en Safari, que no tiene ctx.filter)
+  if (!blurTmp.a) { blurTmp.a = document.createElement('canvas'); blurTmp.b = document.createElement('canvas'); }
+  const sw = Math.max(2, Math.round(r.w / fx)), sh = Math.max(2, Math.round(r.h / fy));
+  const A = blurTmp.a; A.width = sw; A.height = sh;
+  const ga = A.getContext('2d'); ga.imageSmoothingEnabled = true; ga.imageSmoothingQuality = 'high';
+  ga.clearRect(0, 0, sw, sh); ga.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, sw, sh);
+  const B = blurTmp.b; B.width = r.w; B.height = r.h;
+  const gb = B.getContext('2d'); gb.imageSmoothingEnabled = true; gb.imageSmoothingQuality = 'high';
+  gb.clearRect(0, 0, r.w, r.h); gb.drawImage(A, 0, 0, sw, sh, 0, 0, r.w, r.h);
+  return B;
+}
+
+// Entrada «Polvo de letras»: las letras se forman de izquierda a derecha a partir de granos, con un brillo en el frente
+function disolver(ctx, sc, p, b) {
+  const r = textBox(sc, b, 0.8, 0.5);
+  const F = b.px * 1.6;
+  const xf = r.x - F * 0.3 + (r.w + F * 1.3) * p;
+  const c2 = sc.ctx;
+  let img;
+  try { img = c2.getImageData(r.x, r.y, r.w, r.h); } catch (e) { img = null; }
+  if (img) {
+    const d = img.data, w = r.w, h = r.h;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4 + 3;
+        if (!d[i]) continue;
+        const k = clamp((xf - (r.x + x)) / F, 0, 1);
+        if (k >= 1) continue;
+        const hx = (x >> 1) * 374761393 + (y >> 1) * 668265263;
+        let n = (hx ^ (hx >>> 13)) * 1274126177; n = ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+        const v = clamp((k * 1.25 - n) / 0.12, 0, 1);
+        d[i] = d[i] * v * (0.45 + 0.55 * k);
+        if (!d[i]) continue;
+        // premultiplicado no: el color se queda igual
+      }
+    }
+    c2.putImageData(img, r.x, r.y);
+  }
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.drawImage(sc.cv, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+  // brillo en las letras que se están formando
+  const g0 = Math.max(r.x, xf - F * 1.4), g1 = Math.min(r.x + r.w, xf);
+  if (g1 > g0 + 1) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.shadowColor = 'rgba(255,255,255,0.9)';
+    ctx.shadowBlur = b.px * 0.25;
+    ctx.globalAlpha = 0.55 * clamp((1 - p) * 6, 0, 1);
+    ctx.drawImage(sc.cv, g0, r.y, g1 - g0, r.h, g0, r.y, g1 - g0, r.h);
+  }
+  ctx.restore();
+}
+
+// Entrada «Estela de luz»: una mancha de luz con la forma del texto, muy desenfocada, barre de izquierda a derecha
+// y deja detrás el texto nítido, que pasa de gris a blanco
+function estela(ctx, sc, p, b) {
+  const r = textBox(sc, b, 1.6, 0.9);
+  const W = sc.cv.width, H = sc.cv.height;
+  const blur = blurredCopy(sc.cv, r, b.px * 0.32, b.px * 0.14);
+  const F = b.px * 1.5;
+  const L = r.x + b.px * 1.0, R = r.x + r.w - b.px * 1.0;
+  const xf = L - F * 0.5 + (R - L + F * 1.8) * clamp(p / 0.92, 0, 1);
+  // texto nítido: aparece detrás del frente, primero gris
+  maskX(sc.ctx, W, H, -1e5, -1e5 + 1, xf - F * 1.2, xf + F * 0.2);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  const vis = clamp((p - 0.12) / 0.2, 0, 1);
+  ctx.globalAlpha = vis * (0.55 + 0.45 * clamp((p - 0.3) / 0.6, 0, 1));
+  ctx.drawImage(sc.cv, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+  // mancha de luz que va delante
+  const bc = blur.getContext('2d');
+  bc.save();
+  bc.globalCompositeOperation = 'destination-in';
+  const lx = (x) => x - r.x;
+  const gr = bc.createLinearGradient(lx(xf - F * 3.2), 0, lx(xf + F * 1.4), 0);
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.75)'); gr.addColorStop(0.78, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  bc.fillStyle = gr; bc.fillRect(0, 0, r.w, r.h);
+  bc.restore();
+  ctx.globalCompositeOperation = 'lighter';
+  const fade = clamp(p / 0.12, 0, 1) * clamp((1 - p) / 0.25, 0, 1);
+  for (let k = 0; k < 2; k++) {
+    ctx.globalAlpha = 0.85 * fade;
+    ctx.drawImage(blur, r.x, r.y);
+  }
+  ctx.restore();
+}
+
+// Entrada «Hilo dorado»: hilos de luz dorada con perlas brillantes recorren el texto, que nace dorado y acaba en su color
+function hiloDorado(ctx, sc, p, lt, b) {
+  const W = sc.cv.width, H = sc.cv.height;
+  const r = textBox(sc, b, 1.2, 0.8);
+  const L = r.x - b.px * 1.5, R = r.x + r.w + b.px * 3;
+  const xf = L + (R - L) * clamp(p / 0.75, 0, 1);
+  const F = b.px * 2.2;
+  const c2 = sc.ctx;
+  // texto dorado que se vuelve del color normal al final
+  const gold = clamp(1 - (p - 0.72) / 0.25, 0, 1);
+  if (gold > 0.003) {
+    c2.save(); c2.setTransform(1, 0, 0, 1, 0, 0);
+    c2.globalCompositeOperation = 'source-atop';
+    const gg = c2.createLinearGradient(0, b.cy - b.th / 2, 0, b.cy + b.th / 2);
+    gg.addColorStop(0, `rgba(255,214,120,${gold})`); gg.addColorStop(0.55, `rgba(240,170,60,${gold})`); gg.addColorStop(1, `rgba(200,140,60,${gold})`);
+    c2.fillStyle = gg; c2.fillRect(r.x, r.y, r.w, r.h);
+    c2.restore();
+  }
+  maskX(c2, W, H, -1e5, -1e5 + 1, xf - F * 1.3, xf + F * 0.1);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.drawImage(sc.cv, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+  // hilos
+  const fadeH = clamp((1 - p) / 0.28, 0, 1);
+  if (fadeH > 0.003) {
+    ctx.globalCompositeOperation = 'lighter';
+    const goldC = [255, 200, 110], white = [255, 246, 225];
+    const strands = [
+      { a: b.px * 0.3, f: 2.1, ph: 0, off: b.px * 0.42, w: 1.6 },
+      { a: b.px * 0.42, f: 1.6, ph: 1.7, off: b.px * 0.55, w: 1.1 },
+      { a: b.px * 0.22, f: 2.8, ph: 3.1, off: b.px * 0.3, w: 0.8 },
+    ];
+    const x0 = Math.max(0, L - W);
+    const yAt = (s, x) => b.cy + s.off + Math.sin((x / b.px) * s.f * 0.5 + s.ph + lt * 1.5) * s.a;
+    for (const s of strands) {
+      const head = xf;
+      const gr = ctx.createLinearGradient(head - b.px * 9, 0, head, 0);
+      gr.addColorStop(0, css(goldC, 0)); gr.addColorStop(0.7, css(goldC, 0.55 * fadeH)); gr.addColorStop(1, css(white, 0.95 * fadeH));
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = gr; ctx.lineWidth = s.w * b.px * 0.05; ctx.lineCap = 'round';
+      ctx.shadowColor = 'rgba(255,190,90,0.9)'; ctx.shadowBlur = b.px * 0.15;
+      ctx.beginPath();
+      for (let x = Math.max(x0, head - b.px * 9); x <= head; x += b.px * 0.12) { const y = yAt(s, x); if (x === Math.max(x0, head - b.px * 9)) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    // perlas de luz (la cabeza de cada hilo y algunas detrás)
+    const pearls = [[0, 0], [1, 0.9], [0, 2.1], [1, 3.2], [2, 1.5]];
+    for (const [si, lag] of pearls) {
+      const s = strands[si], x = xf - lag * b.px * 1.2;
+      if (x < 0 || x > W) continue;
+      const y = yAt(s, x);
+      const a = fadeH * (lag === 0 ? 1 : 0.8);
+      blob(ctx, goldC, x, y, b.px * 1.4, b.px * 1.4, 0.5 * a);
+      blob(ctx, white, x, y, b.px * 0.45, b.px * 0.45, a);
+    }
+    // chispas finas
+    for (let i = 0; i < 26; i++) {
+      const x = xf - rnd(i, 1, 11) * b.px * 8, y = b.cy + b.px * (0.1 + 0.9 * rnd(i, 2, 11)) + Math.sin(lt * 3 + i) * b.px * 0.1;
+      const tw = 0.5 + 0.5 * Math.sin(lt * 9 + i * 2.3);
+      blob(ctx, white, x, y, b.px * 0.08, b.px * 0.08, 0.8 * tw * fadeH);
+    }
+  }
+  ctx.restore();
 }
 
 // Entrada «Apertura»: una ventana de bordes suaves se abre desde el centro del texto hacia los lados
@@ -1108,6 +1443,49 @@ function perroForma(ctx, src, p, lt, cx, cy, tw, th, px) {
   ctx.restore();
 }
 
+
+// ---------------- Luz de las transiciones entre clips ----------------
+const XF_LIGHT = new Set(['polvo', 'rafaga']);
+function xfadeLight(ctx, type, p, t, W, H) {
+  const S = Math.min(W, H) / 1080;
+  ctx.globalAlpha = 1;
+  if (type === 'polvo') {
+    // polvo mágico: motas doradas y alguna luz desenfocada flotan mientras una imagen se funde con la otra
+    const env = clamp(p / 0.08, 0, 1) * clamp((1 - p) / 0.12, 0, 1);
+    const cream = [255, 226, 170], white = [255, 244, 222];
+    for (let i = 0; i < 38; i++) {
+      const r1 = rnd(i, 701, 3), r2 = rnd(i, 702, 3), r3 = rnd(i, 703, 3), r4 = rnd(i, 704, 3);
+      const x = W * fract(r1 + t * 0.012 * (r3 - 0.5)), y = H * fract(r2 - t * 0.02 * (0.3 + r4));
+      const tw = 0.4 + 0.6 * Math.pow(0.5 + 0.5 * Math.sin(t * (3 + 6 * r3) + r4 * 40), 2);
+      const s = (16 + 30 * r4 * r4 * r4) * S;
+      blob(ctx, cream, x, y, s * 3.2, s * 3.2, 0.5 * tw * env);
+      disc(ctx, white, x, y, s * 0.6, 0.8 * tw * env);
+    }
+    for (let i = 0; i < 6; i++) {
+      const x = W * rnd(i, 711, 3), y = H * rnd(i, 712, 3) - p * H * 0.04;
+      const r = (34 + 40 * rnd(i, 713, 3)) * S;
+      const k = clamp(Math.sin(clamp((p - rnd(i, 714, 3) * 0.5) / 0.5, 0, 1) * Math.PI), 0, 1);
+      disc(ctx, cream, x, y, r, 0.38 * k * env);
+      blob(ctx, white, x + r * 0.35, y - r * 0.3, r * 0.5, r * 0.5, 0.5 * k * env);
+    }
+  } else if (type === 'rafaga') {
+    // ráfaga de color: luz magenta, luego azul celeste, se funde en blanco y deja una franja cálida al salir
+    const mag = Math.pow(clamp(Math.sin(clamp(p / 0.26, 0, 1) * Math.PI), 0, 1), 0.8);
+    const cyan = clamp((p - 0.12) / 0.12, 0, 1) * clamp((0.62 - p) / 0.12, 0, 1);
+    const wht = clamp((p - 0.4) / 0.13, 0, 1) * clamp((0.82 - p) / 0.1, 0, 1);
+    const warm = clamp(Math.sin(clamp((p - 0.64) / 0.3, 0, 1) * Math.PI), 0, 1);
+    blob(ctx, [235, 60, 215], W * 0.8, H * 0.15, W * 4.2, H * 3.4, 1.0 * mag);
+    blob(ctx, [110, 70, 240], W * 0.1, H * 0.95, W * 2.2, H * 1.6, 0.6 * mag);
+    blob(ctx, [255, 200, 245], W * 0.85, H * 0.08, W * 0.7, H * 0.5, 0.45 * mag);
+    ctx.globalAlpha = clamp(0.92 * cyan, 0, 1); ctx.fillStyle = 'rgb(145,205,242)'; ctx.fillRect(0, 0, W, H);
+    blob(ctx, [200, 240, 255], W * 0.85, H * 0.3, W * 1.8, H * 1.4, 0.25 * cyan);
+    ctx.globalAlpha = clamp(wht, 0, 1); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = clamp(0.5 * warm, 0, 1); ctx.fillStyle = 'rgb(200,120,110)'; ctx.fillRect(0, 0, W, H);
+    blob(ctx, [255, 205, 160], -W * 0.05, H * 0.6, W * 1.3, H * 2.2, 0.6 * warm);
+  }
+  ctx.globalAlpha = 1;
+}
+
 // ---------------- Gestor de capas ----------------
 function mk() { const cv = document.createElement('canvas'); return { cv, ctx: cv.getContext('2d') }; }
 
@@ -1129,9 +1507,17 @@ export class Overlay {
     const post = postParams(act, t);
     let usedN = false, usedA = false, usedT = false;
     const parts = act.filter((c) => c.type === 'fx' && c.kind === 'particles').sort((a, b) => a.start - b.start);
-    if (parts.length) {
+    const xfs = [];
+    for (const [id, x] of xfadeAt(project, t)) if (x.role === 'out' && XF_LIGHT.has(x.type)) xfs.push({ id, ...x });
+    if (parts.length || xfs.length) {
       this.n.ctx.setTransform(1, 0, 0, 1, 0, 0); this.n.ctx.clearRect(0, 0, this.n.cv.width, this.n.cv.height);
       this.a.ctx.setTransform(1, 0, 0, 1, 0, 0); this.a.ctx.clearRect(0, 0, this.a.cv.width, this.a.cv.height);
+      for (const x of xfs) {
+        this.a.ctx.setTransform(0.5, 0, 0, 0.5, 0, 0);
+        this.a.ctx.globalCompositeOperation = 'lighter';
+        xfadeLight(this.a.ctx, x.type, x.p, t, W, H);
+        usedA = true;
+      }
       for (const c of parts) {
         const def = PARTICLES.find((p) => p.id === c.fx);
         if (!def) continue;

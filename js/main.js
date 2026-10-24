@@ -11,7 +11,9 @@ import { Timeline } from './timeline.js';
 import { Panels } from './panels.js';
 import { startRecorder, pickMime, offlineConfig, exportOffline } from './exporter.js';
 import { saveProject, loadSaved, listProjects, openSavedProject, deleteProject, askPersistent, storageInfo } from './storage.js';
-import { ASPECTS } from './presets.js';
+import { ASPECTS, loadExtraFonts, PARTICLES, POSTFX } from './presets.js';
+import { layerInfo, swapContent, replaceMedia } from './layers.js';
+loadExtraFonts();
 import { h, fmtTime, toast, openModal, closeModal } from './ui.js';
 import { openSubtitles, openSubEditor, subClips } from './subs.js';
 import { icon } from './icons.js';
@@ -214,6 +216,7 @@ let importLane = null;
 function pickFiles(opts = {}) {
   const fi = $('fileIn');
   importLane = opts.lane || null;
+  replaceTarget = opts.replace || null;
   fi.accept = opts.accept || 'video/*,image/*,audio/*';
   fi.click();
 }
@@ -275,6 +278,13 @@ async function importFiles(files, addToTimeline) {
     try {
       const m = await createMedia(f);
       ok++;
+      if (replaceTarget) {
+        const c = getClip(replaceTarget);
+        replaceTarget = null;
+        if (c && replaceMedia(c, m)) { select(c.id); dirty = true; toast('Sustituido ✓'); }
+        else toast('Ese archivo no sirve para sustituir este clip', 4000);
+        continue;
+      }
       if (addToTimeline) addMediaToTimeline(m, true, m.kind !== 'audio' ? importLane : null);
     } catch (err) {
       toast('No se pudo abrir ' + f.name + ': ' + err.message, 5000);
@@ -313,6 +323,42 @@ function addText(preset) {
   select(c.id);
   updateEmpty();
   dirty = true;
+}
+
+// ---------- sustituir ----------
+let replaceTarget = null;
+function replaceClip(c) {
+  if (!c) return;
+  if (c.type === 'fx') {
+    const list = c.kind === 'post' ? POSTFX : PARTICLES;
+    const grid = h('div', { class: 'grid' }, ...list.map((d) => h('button', {
+      class: 'card' + (d.id === c.fx ? ' on' : ''),
+      onclick: () => {
+        c.fx = d.id;
+        if (c.kind !== 'post') { c.color = d.color || c.color; }
+        commit(); bus.emit('change', { structural: true, keepPanel: true });
+        closeModal(); dirty = true; toast('Efecto sustituido ✓');
+        play(c.start, c.start + Math.min(c.dur, 3));
+      },
+    }, h('span', { class: 'big' }, d.i || '✨'), h('small', {}, d.n))));
+    openModal(h('div', {}, h('h2', {}, 'Sustituir efecto'), h('p', { class: 'hint' }, 'Elige el efecto que va en su lugar. Se mantienen la duración y el sitio en la línea de tiempo.'), grid,
+      h('button', { class: 'btn block', style: 'margin-top:14px', onclick: closeModal }, 'Cancelar')));
+    return;
+  }
+  const audioClip = c.type === 'audio';
+  const ok = (m) => (audioClip ? m.kind !== 'image' : m.kind !== 'audio') && m.id !== c.media;
+  const items = [...state.media.values()].filter(ok);
+  const fromDevice = () => {
+    closeModal();
+    pickFiles({ accept: audioClip ? 'audio/*,video/*' : 'video/*,image/*', replace: c.id });
+  };
+  const grid = panels.mediaGrid(items, (m) => { if (replaceMedia(c, m)) { closeModal(); select(c.id); dirty = true; toast('Sustituido ✓'); } });
+  openModal(h('div', {}, h('h2', {}, audioClip ? 'Sustituir audio' : 'Sustituir vídeo o foto'),
+    h('p', { class: 'hint' }, 'Lo nuevo ocupa el mismo sitio y conserva la posición, el tamaño, los filtros y los efectos.'),
+    h('button', { class: 'btn block accent', onclick: fromDevice }, '📂 Elegir del dispositivo…'),
+    items.length ? h('div', { class: 'field', style: 'margin-top:14px' }, h('label', {}, 'O uno de tus medios')) : null,
+    items.length ? grid : null,
+    h('button', { class: 'btn block', style: 'margin-top:14px', onclick: closeModal }, 'Cancelar')));
 }
 
 function addFx(id, kind) {
@@ -383,6 +429,24 @@ function updateSelBoxes() {
       const w = Math.max(16, b.w * sx), hh = Math.max(16, b.h * sy);
       el.style.cssText = `left:${cr.left - wr.left + b.cx * sx - w / 2}px;top:${cr.top - wr.top + b.cy * sy - hh / 2}px;width:${w}px;height:${hh}px;transform:rotate(${b.rot}rad)`;
       el.classList.toggle('prim', id === state.selection);
+      // botón ⇅ para intercambiar con lo que hay debajo (o encima, si es el vídeo principal)
+      let sw = el.querySelector('.swap-btn');
+      const c = id === state.selection && state.sel.size === 1 ? getClip(id) : null;
+      const li = c && (c.type === 'video' || c.type === 'image') ? layerInfo(c) : null;
+      const other = li ? (c.lane === 'overlay' ? li.below || li.above : li.above) : null;
+      if (other) {
+        if (!sw) {
+          sw = h('button', { class: 'swap-btn', title: 'Intercambiar con el de debajo', 'aria-label': 'Intercambiar capas' }, '⇅');
+          sw.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const k = getClip(state.selection);
+            const l2 = k ? layerInfo(k) : null;
+            const o = l2 ? (k.lane === 'overlay' ? l2.below || l2.above : l2.above) : null;
+            if (o && swapContent(k, o)) { toast('Intercambiados ✓'); dirty = true; }
+          });
+          el.append(sw);
+        }
+      } else if (sw) sw.remove();
     }
   }
   for (const [id, el] of boxEls) if (!seen.has(id)) { el.remove(); boxEls.delete(id); }
@@ -781,7 +845,7 @@ function updateUndo() {
 const app = {
   openXfade: (c) => { if (!state.sel.has(c.id) || state.sel.size > 1) select(c.id); panels.open('xfade'); },
   audio, pause, openSubtitles: () => openSubtitles(app), openSubEditor: () => openSubEditor(app), subCount: () => subClips().length,
-  seek, pickFiles, addMediaToTimeline: (m, q, lane) => addMediaToTimeline(m, q, lane), addText, addFx, recordVoice, openProject,
+  seek, pickFiles, replaceClip, addMediaToTimeline: (m, q, lane) => addMediaToTimeline(m, q, lane), addText, addFx, recordVoice, openProject,
   changed: () => { dirty = true; },
   audioChanged: () => { if (state.playing) audio.schedule(state.project, state.media, state.time); },
   preview: (from, len) => play(Math.max(0, from), from + len),

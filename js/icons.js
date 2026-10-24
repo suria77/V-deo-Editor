@@ -34,6 +34,8 @@ const P = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   layer: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+  swap: '<path d="M7 4v16M7 4L4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3"/>',
+  replace: '<rect x="3" y="5" width="11" height="9" rx="1.5"/><path d="M14 10h4a2 2 0 012 2v5a2 2 0 01-2 2h-7a2 2 0 01-2-2v-3"/><path d="M17 2l2 2-2 2M19 4h-5"/>',
   prev: '<path d="M14 6l-6 6 6 6"/>',
   next: '<path d="M10 6l6 6-6 6"/>',
 };
