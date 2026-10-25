@@ -1,5 +1,6 @@
 // Capa 2D: partículas (sin estado, deterministas → perfectas al saltar por la línea de tiempo) y texto animado.
 import { PARTICLES } from './presets.js';
+import { drawSpectrum } from './spectrum.js';
 import { bus } from './state.js';
 import { animClip } from './kf.js';
 import { xfadeAt } from './xfade.js';
@@ -1768,7 +1769,7 @@ export class Overlay {
     this.n.cv.width = this.a.cv.width = pw; this.n.cv.height = this.a.cv.height = ph;
     this.tx.cv.width = W; this.tx.cv.height = H;
   }
-  draw(project, t, W, H) {
+  draw(project, t, W, H, media) {
     this.ensure(W, H);
     const act = project.clips.filter((c) => (c.type === 'fx' || c.type === 'text') && t >= c.start - 1e-6 && t < c.start + c.dur).map((c) => animClip(c, t - c.start));
     const post = postParams(act, t);
@@ -1798,8 +1799,10 @@ export class Overlay {
     }
     textBounds.clear();
     const texts = act.filter((c) => c.type === 'text').sort((a, b) => a.start - b.start);
-    if (texts.length) {
+    const specs = media ? act.filter((c) => c.type === 'fx' && c.kind === 'spectrum').sort((a, b) => a.start - b.start) : [];
+    if (texts.length || specs.length) {
       this.tx.ctx.setTransform(1, 0, 0, 1, 0, 0); this.tx.ctx.clearRect(0, 0, W, H);
+      for (const c of specs) { if (drawSpectrum(this.tx.ctx, c, t, W, H, project, media)) usedT = true; }
       for (const c of texts) { if (drawText(this.tx.ctx, c, t - c.start, W, H)) usedT = true; }
     }
     return { normal: usedN ? this.n.cv : null, add: usedA ? this.a.cv : null, text: usedT ? this.tx.cv : null, post };

@@ -6,6 +6,7 @@ import {
   TEXT_IN, TEXT_OUT, TEXT_LOOP, TEXT_STYLES, PARTICLES, POSTFX,
 } from './presets.js';
 import { icon } from './icons.js';
+import { SPEC_STYLES } from './spectrum.js';
 import { XFADES, nextAdjacent } from './xfade.js';
 import { layerInfo, moveLayer, swapContent } from './layers.js';
 import { propsFor, valueAt, setValue, setKf, removeKf, kfAt, hasKf, kfTimes, anyKfAt, toggleAllKf, anyKf } from './kf.js';
@@ -276,8 +277,15 @@ export class Panels {
     if (!this.fxSeg) this.fxSeg = 'particles';
     const seg = h('div', { class: 'seg' });
     const mk = (id, n) => h('button', { class: this.fxSeg === id ? 'on' : '', onclick: () => { this.fxSeg = id; this.render(); } }, n);
-    seg.append(mk('particles', '✨ Luces y ambiente'), mk('post', '🎬 Imagen'));
+    seg.append(mk('particles', '✨ Luces'), mk('post', '🎬 Imagen'), mk('spectrum', '🎵 Espectro'));
     b.append(seg);
+    if (this.fxSeg === 'spectrum') {
+      b.append(h('p', { class: 'hint' }, 'Visualizador del audio de tu proyecto: se mueve con la música. Elige un estilo y luego ajusta color, forma y tamaño.'));
+      const g = h('div', { class: 'grid' });
+      for (const d of SPEC_STYLES) g.append(h('button', { class: 'card', onclick: () => this.app.addFx(d.id, 'spectrum') }, h('span', { class: 'em' }, d.i), d.n));
+      b.append(g);
+      return;
+    }
     const isP = this.fxSeg === 'particles';
     b.append(h('p', { class: 'hint' }, isP
       ? 'Se dibujan encima del vídeo y se añaden donde está el cabezal; luego puedes alargarlos y ajustarlos.'
@@ -395,7 +403,7 @@ export class Panels {
     const m = c.media ? state.media.get(c.media) : null;
     let title = meta[2];
     if (m) title = m.name;
-    if (c.type === 'fx') { const d = (c.kind === 'particles' ? PARTICLES : POSTFX).find((p) => p.id === c.fx); if (d) title = d.n; }
+    if (c.type === 'fx') { const d = (c.kind === 'spectrum' ? SPEC_STYLES : c.kind === 'particles' ? PARTICLES : POSTFX).find((p) => p.id === c.fx); if (d) title = d.n; }
     if (c.type === 'text') title = c.text.split('\n')[0] || 'Texto';
     b.append(h('div', { class: 'clip-head' }, h('span', { class: 'badge', style: `background:${multi ? 'var(--accent)' : c.lane === 'overlay' ? 'var(--clip-over)' : meta[1]}` }, multi ? '☑' : meta[0]), h('b', {}, multi ? `${sel.length} clips seleccionados` : title)));
     if (multi) b.append(h('p', { class: 'hint' }, same.length ? `Lo que cambies aquí se aplica a los ${same.length + 1} clips de tipo «${meta[2]}». Los keyframes solo al último que tocaste.` : `Los clips seleccionados son de tipos distintos: aquí solo cambia el último que tocaste («${title}»).`));
@@ -569,6 +577,40 @@ export class Panels {
         h('div', { class: 'field' }, h('label', {}, 'Mientras está en pantalla')),
         chips(TEXT_LOOP, c.loop.type, (v) => { c.loop.type = v; live(); done(); }),
         S('Intensidad', c.loop, 'amount', 0, 1, 0.01, pct)));
+    } else if (c.type === 'fx' && c.kind === 'spectrum') {
+      const st = c.style || c.fx;
+      const circ = st === 'circle' || st === 'ring';
+      const bars = !['line', 'area', 'wave', 'ring'].includes(st);
+      const aud = state.project.clips.filter((x) => x.type === 'audio' || (x.type === 'video' && !x.muted)).map((x) => ({ id: x.id, n: (state.media.get(x.media)?.name || 'Audio').slice(0, 22) }));
+      b.append(sec('fxp', 'Estilo', '🎵',
+        chips(SPEC_STYLES, st, (v) => { c.fx = v; c.style = v; live(); done(); this.render(); }),
+        selectCtl('Audio que mide', [{ id: 'all', n: 'Todo el audio del proyecto' }, ...aud], c.source || 'all', (v) => { c.source = v; live(); done(); }),
+        S('Sensibilidad', c, 'sens', 0.2, 4, 0.05, (v) => v.toFixed(2) + '×'),
+        S('Suavidad / caída', c, 'smooth', 0, 1, 0.01, pct),
+        S('Opacidad', c, 'opacity', 0, 1, 0.01, pct),
+        h('h3', { class: 'sub-h' }, 'Color'),
+        chips([{ id: 'none', n: 'Un color' }, { id: 'v', n: 'Degradado vertical' }, { id: 'h', n: 'Degradado horizontal' }], c.grad || 'v', (v) => { c.grad = v; live(); done(); }),
+        color('Color', c.color, (v) => { c.color = v; live(); }, done),
+        color('Color 2', c.color2 || '#ff4fd8', (v) => { c.color2 = v; live(); }, done),
+        S('Resplandor', c, 'glow', 0, 1, 0.01, pct),
+        h('h3', { class: 'sub-h' }, 'Forma y tamaño'),
+        S('Número de barras', c, 'bars', 8, 160, 1, (v) => Math.round(v) + ''),
+        bars || circ ? S('Separación', c, 'gap', 0, 0.9, 0.01, pct) : null,
+        bars ? toggle('Puntas redondeadas', c.round, (v) => { c.round = v; live(); done(); }) : null,
+        !bars && !circ ? S('Grosor de línea', c, 'thick', 0.002, 0.04, 0.001, (v) => (v * 100).toFixed(1)) : null,
+        S('Altura', c, 'height', 0.04, 0.8, 0.01, pct),
+        circ ? S('Radio', c, 'radius', 0.05, 0.45, 0.005, pct) : S('Anchura', c, 'width', 0.1, 1.2, 0.01, pct),
+        circ ? S('Giro continuo', c, 'spin', -90, 90, 1, (v) => Math.round(v) + '°/s') : null,
+        ['bars', 'dots', 'line', 'area', 'circle'].includes(st) ? toggle('Reflejar (arriba y abajo)', c.mirror, (v) => { c.mirror = v; live(); done(); }) : null,
+        S('Frecuencia mínima', c, 'fmin', 20, 2000, 10, (v) => Math.round(v) + ' Hz'),
+        S('Frecuencia máxima', c, 'fmax', 2000, 20000, 100, (v) => Math.round(v) + ' Hz'),
+        h('h3', { class: 'sub-h' }, 'Posición'),
+        S('Horizontal', c, 'x', -1, 1, 0.01, (v) => v.toFixed(2)),
+        S('Vertical', c, 'y', -1, 1, 0.01, (v) => v.toFixed(2)),
+        S('Rotación', c, 'rot', -180, 180, 1, (v) => Math.round(v) + '°'),
+        K('intensity'),
+        S('Fundido entrada/salida', c, 'fade', 0, 3, 0.05, secs),
+        ...timing));
     } else if (c.type === 'fx') {
       const isP = c.kind === 'particles';
       const list = isP ? PARTICLES : POSTFX;

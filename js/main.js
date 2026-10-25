@@ -12,6 +12,7 @@ import { Panels } from './panels.js';
 import { startRecorder, pickMime, offlineConfig, exportOffline } from './exporter.js';
 import { saveProject, loadSaved, listProjects, openSavedProject, deleteProject, askPersistent, storageInfo } from './storage.js';
 import { ASPECTS, loadExtraFonts, PARTICLES, POSTFX } from './presets.js';
+import { SPEC_STYLES } from './spectrum.js';
 import { layerInfo, swapContent, replaceMedia } from './layers.js';
 loadExtraFonts();
 import { h, fmtTime, toast, openModal, closeModal } from './ui.js';
@@ -330,12 +331,13 @@ let replaceTarget = null;
 function replaceClip(c) {
   if (!c) return;
   if (c.type === 'fx') {
-    const list = c.kind === 'post' ? POSTFX : PARTICLES;
+    const list = c.kind === 'post' ? POSTFX : c.kind === 'spectrum' ? SPEC_STYLES : PARTICLES;
     const grid = h('div', { class: 'grid' }, ...list.map((d) => h('button', {
       class: 'card' + (d.id === c.fx ? ' on' : ''),
       onclick: () => {
         c.fx = d.id;
-        if (c.kind !== 'post') { c.color = d.color || c.color; }
+        if (c.kind === 'spectrum') c.style = d.id;
+        else if (c.kind !== 'post') { c.color = d.color || c.color; }
         commit(); bus.emit('change', { structural: true, keepPanel: true });
         closeModal(); dirty = true; toast('Efecto sustituido ✓');
         play(c.start, c.start + Math.min(c.dur, 3));

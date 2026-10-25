@@ -592,7 +592,7 @@ export class Renderer {
       this.drawLayer(c, t - c.start, t, m, c.type === 'video' ? videoFor(c) : null, xf.get(c.id));
     }
     // texto y partículas
-    const ov = overlay.draw(project, t, W, H);
+    const ov = overlay.draw(project, t, W, H, media);
     if (ov.normal) { this.uploadOverlay(0, ov.normal); this.drawOverlay(0, false); }
     if (ov.add) { this.uploadOverlay(1, ov.add); this.drawOverlay(1, true); }
     if (ov.text) { this.uploadOverlay(2, ov.text); this.drawOverlay(2, false); }

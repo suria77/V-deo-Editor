@@ -2,6 +2,7 @@
 import { state, bus, LANES, LANE_NAMES, select, toggleSel, selectIds, commit, projectDuration } from './state.js';
 import { h, fmtTime } from './ui.js';
 import { PARTICLES, POSTFX } from './presets.js';
+import { SPEC_STYLES } from './spectrum.js';
 import { kfTimes } from './kf.js';
 import { nextAdjacent, XFADES } from './xfade.js';
 
@@ -135,8 +136,8 @@ export class Timeline {
     } else if (c.type === 'text') {
       label = 'T  ' + (c.text || '').replace(/\n/g, ' ');
     } else if (c.type === 'fx') {
-      const d = (c.kind === 'particles' ? PARTICLES : POSTFX).find((p) => p.id === c.fx);
-      label = d ? `${d.i} ${d.n}` : 'Efecto';
+      const d = (c.kind === 'spectrum' ? SPEC_STYLES : c.kind === 'particles' ? PARTICLES : POSTFX).find((p) => p.id === c.fx);
+      label = c.kind === 'spectrum' ? `🎵 Espectro · ${d ? d.n : ''}` : d ? `${d.i} ${d.n}` : 'Efecto';
     }
     el.append(h('div', { class: 'cl-lab' }, label), h('div', { class: 'h l' }), h('div', { class: 'h r' }));
     this.place(el, c);

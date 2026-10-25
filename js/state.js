@@ -1,6 +1,7 @@
 // Estado del proyecto, historial (deshacer/rehacer) y utilidades de clips.
 import { ADJ_DEFAULT, PARTICLES, POSTFX } from './presets.js';
 import { splitKf } from './kf.js';
+import { specDefaults } from './spectrum.js';
 
 let _uid = 0;
 export const uid = (p = 'c') => p + Date.now().toString(36) + (_uid++).toString(36) + Math.floor(Math.random() * 1e4).toString(36);
@@ -144,6 +145,7 @@ export function makeTextClip(start, preset = {}) {
 }
 
 export function makeFxClip(def, start, kind = 'particles') {
+  if (kind === 'spectrum') return { id: uid(), type: 'fx', lane: 'fx', kind, fx: def, style: def, start, dur: 6, intensity: 1, speed: 1, size: 1, color: '#7cf3ff', fade: 0.3, seed: 0, ...specDefaults(def) };
   const base = kind === 'particles' ? PARTICLES.find((p) => p.id === def) : POSTFX.find((p) => p.id === def);
   return {
     id: uid(), type: 'fx', lane: 'fx', kind, fx: def, start, dur: 4,
