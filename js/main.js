@@ -342,7 +342,7 @@ function replaceClip(c) {
         closeModal(); dirty = true; toast('Efecto sustituido ✓');
         play(c.start, c.start + Math.min(c.dur, 3));
       },
-    }, h('span', { class: 'big' }, d.i || '✨'), h('small', {}, d.n))));
+    }, h('small', {}, d.n))));
     openModal(h('div', {}, h('h2', {}, 'Sustituir efecto'), h('p', { class: 'hint' }, 'Elige el efecto que va en su lugar. Se mantienen la duración y el sitio en la línea de tiempo.'), grid,
       h('button', { class: 'btn block', style: 'margin-top:14px', onclick: closeModal }, 'Cancelar')));
     return;

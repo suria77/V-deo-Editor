@@ -277,12 +277,12 @@ export class Panels {
     if (!this.fxSeg) this.fxSeg = 'particles';
     const seg = h('div', { class: 'seg' });
     const mk = (id, n) => h('button', { class: this.fxSeg === id ? 'on' : '', onclick: () => { this.fxSeg = id; this.render(); } }, n);
-    seg.append(mk('particles', '✨ Luces'), mk('post', '🎬 Imagen'), mk('spectrum', '🎵 Espectro'));
+    seg.append(mk('particles', 'Luces'), mk('post', 'Imagen'), mk('spectrum', 'Espectro'));
     b.append(seg);
     if (this.fxSeg === 'spectrum') {
       b.append(h('p', { class: 'hint' }, 'Visualizador del audio de tu proyecto: se mueve con la música. Elige un estilo y luego ajusta color, forma y tamaño.'));
       const g = h('div', { class: 'grid' });
-      for (const d of SPEC_STYLES) g.append(h('button', { class: 'card', onclick: () => this.app.addFx(d.id, 'spectrum') }, h('span', { class: 'em' }, d.i), d.n));
+      for (const d of SPEC_STYLES) g.append(h('button', { class: 'card txt', onclick: () => this.app.addFx(d.id, 'spectrum') }, d.n));
       b.append(g);
       return;
     }
@@ -292,7 +292,7 @@ export class Panels {
       : 'Transforman toda la imagen durante un tramo: glitch, VHS, temblor, flashes…'));
     const grid = (list) => {
       const g = h('div', { class: 'grid' });
-      for (const d of list) g.append(h('button', { class: 'card', onclick: () => this.app.addFx(d.id, isP ? 'particles' : 'post') }, h('span', { class: 'em' }, d.i), d.n));
+      for (const d of list) g.append(h('button', { class: 'card txt', onclick: () => this.app.addFx(d.id, isP ? 'particles' : 'post') }, d.n));
       return g;
     };
     if (isP) {
@@ -570,8 +570,8 @@ export class Panels {
       b.append(sec('tanim', 'Animación', '✨',
         h('div', { class: 'field' }, h('label', {}, 'Aparición')),
         chips(TEXT_IN, c.inAnim.type, (v) => { c.inAnim.type = v; const d = TEXT_IN.find((x) => x.id === v); if (d && d.dur) c.inAnim.dur = d.dur; live(); done(); app.preview(c.start, Math.min(c.dur, c.inAnim.dur + 0.5)); this.render(); }),
-        S(c.inAnim.type === 'texto1' ? 'Velocidad: duración de la aparición' : 'Duración de aparición', c.inAnim, 'dur', 0.1, 3, 0.05, secs),
-        c.inAnim.type === 'texto1' ? slider('Intensidad del destello', c.inAnim.flare == null ? 1 : c.inAnim.flare, 0, 1.5, 0.05, (v) => { c.inAnim.flare = v; live(); }, done, pct) : null,
+        S(/^texto\d$/.test(c.inAnim.type) ? 'Velocidad: duración de la aparición' : 'Duración de aparición', c.inAnim, 'dur', 0.1, 3, 0.05, secs),
+        ['texto1','texto3','texto5','texto7'].includes(c.inAnim.type) ? slider('Intensidad del brillo', c.inAnim.flare == null ? 1 : c.inAnim.flare, 0, 1.5, 0.05, (v) => { c.inAnim.flare = v; live(); }, done, pct) : null,
         h('div', { class: 'field' }, h('label', {}, 'Desaparición')),
         chips(TEXT_OUT, c.outAnim.type, (v) => { c.outAnim.type = v; live(); done(); app.preview(Math.max(c.start, c.start + c.dur - c.outAnim.dur - 0.3), c.outAnim.dur + 0.3); }),
         S('Duración de desaparición', c.outAnim, 'dur', 0.1, 3, 0.05, secs),
@@ -616,7 +616,7 @@ export class Panels {
       const isP = c.kind === 'particles';
       const list = isP ? PARTICLES : POSTFX;
       b.append(sec('fxp', 'Efecto', '✨',
-        chips(list.map((d) => ({ id: d.id, n: d.n, i: d.i })), c.fx, (v) => { c.fx = v; const d = list.find((x) => x.id === v); if (isP && d.color) c.color = d.color; bus.emit('change', { structural: true }); done(); }),
+        chips(list.map((d) => ({ id: d.id, n: d.n })), c.fx, (v) => { c.fx = v; const d = list.find((x) => x.id === v); if (isP && d.color) c.color = d.color; bus.emit('change', { structural: true }); done(); }),
         K('intensity'),
         S('Velocidad', c, 'speed', 0.1, 3, 0.05, (v) => v.toFixed(2) + '×'),
         isP ? K('size') : null,

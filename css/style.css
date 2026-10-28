@@ -394,3 +394,4 @@ img.logo { background: none !important; box-shadow: 0 1px 4px rgba(0,0,0,.45) !i
 .font-btn { min-height: 52px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); color: var(--ink); font-size: 21px; line-height: 1.1; padding: 6px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .font-btn.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); background: var(--accent-soft); }
 .sel-box .swap-btn { position: absolute; left: 8px; top: 8px; width: 44px; height: 44px; border-radius: 50%; border: 2px solid #fff; background: var(--accent-grad, var(--accent)); color: #fff; font-size: 22px; font-weight: 800; pointer-events: auto; box-shadow: 0 2px 10px rgba(0,0,0,.5); display: grid; place-items: center; padding: 0; }
+.card.txt { min-height: 52px; font-size: 15px; letter-spacing: .01em; }

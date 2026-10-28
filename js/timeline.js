@@ -137,7 +137,7 @@ export class Timeline {
       label = 'T  ' + (c.text || '').replace(/\n/g, ' ');
     } else if (c.type === 'fx') {
       const d = (c.kind === 'spectrum' ? SPEC_STYLES : c.kind === 'particles' ? PARTICLES : POSTFX).find((p) => p.id === c.fx);
-      label = c.kind === 'spectrum' ? `🎵 Espectro · ${d ? d.n : ''}` : d ? `${d.i} ${d.n}` : 'Efecto';
+      label = c.kind === 'spectrum' ? `Espectro · ${d ? d.n : ''}` : d ? d.n : 'Efecto';
     }
     el.append(h('div', { class: 'cl-lab' }, label), h('div', { class: 'h l' }), h('div', { class: 'h r' }));
     this.place(el, c);

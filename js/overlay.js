@@ -1317,6 +1317,7 @@ export function drawText(ctx, c, lt, W, H) {
     case 'pop': alpha *= clamp(pIn * 4, 0, 1); scale *= backOut(pIn); break;
     case 'zoomOut': alpha *= eI; scale *= 1 + (1 - eI) * 1.6; break;
     case 'glow': alpha *= eI; glowMul += (1 - eI) * 3; break;
+    case 'texto2': alpha *= pIn; scale *= 0.88 + 0.12 * eI; break;
     default: break;
   }
   switch (outA.type) {
@@ -1341,7 +1342,7 @@ export function drawText(ctx, c, lt, W, H) {
   // «Perro forma»: el texto se dibuja aparte y luego se compone con estela, cortes, destello y rayo
   const pfOn = inA.type === 'perroForma' && lt < inA.dur;
   const apOn = inA.type === 'apertura' && lt < inA.dur;
-  const scFx = ['disolver', 'estela', 'hiloDorado', 'texto1'].includes(inA.type) && lt < inA.dur ? inA.type : null;
+  const scFx = ['disolver', 'estela', 'hiloDorado', 'texto1', 'texto3', 'texto4', 'texto5', 'texto6', 'texto7'].includes(inA.type) && lt < inA.dur ? inA.type : null;
   const lcOn = inA.type === 'luciernaga' && lt < inA.dur;
   let dc = ctx, pfS = null;
   if (pfOn || apOn || scFx) {
@@ -1402,6 +1403,20 @@ export function drawText(ctx, c, lt, W, H) {
         const u = n > 1 ? Math.abs(frac * 2 - 1) : 0;
         const dl = 0.3 * Math.pow(1 - u, 1.1);
         a *= smooth(0, 1, clamp((pIn + 0.1 - dl) / 0.2, 0, 1)) * smooth(0, 0.06, pIn);
+        break;
+      }
+      case 'texto4': case 'texto9': {
+        // las letras salen del centro y se separan hasta su sitio
+        const e = ease(clamp(pIn / 0.85, 0, 1));
+        gdx -= (g.x + g.w / 2) * (1 - e) * 0.8;
+        gs *= 0.5 + 0.5 * e;
+        a *= smooth(0, 0.45, pIn);
+        break;
+      }
+      case 'texto8': {
+        // las letras aparecen en orden aleatorio, grandes y difusas, y se asientan
+        const t0 = rnd(gi, 301, 9) * 0.55, gp = clamp((pIn - t0) / 0.4, 0, 1);
+        a *= ease(gp); gs *= 1 + 0.5 * (1 - ease(gp));
         break;
       }
       case 'luciernaga': {
@@ -1470,6 +1485,7 @@ export function drawText(ctx, c, lt, W, H) {
     if (scFx === 'disolver') disolver(ctx, pfS, pIn, box);
     else if (scFx === 'estela') estela(ctx, pfS, pIn, box);
     else if (scFx === 'texto1') texto1(ctx, pfS, pIn, box, inA.flare == null ? 1 : inA.flare);
+    else if (scFx.startsWith('texto')) textoFx(ctx, pfS, pIn, box, scFx, inA.flare == null ? 1 : inA.flare, c.id);
     else hiloDorado(ctx, pfS, pIn, lt, box);
   }
   ctx.restore();
@@ -1514,6 +1530,133 @@ function texto1(ctx, sc, p, b, flareK) {
     }
     ell(b.tw * 0.3 * (0.6 + 0.4 * F), b.px * 0.52 * (0.7 + 0.3 * F), [[0, HOT, F], [0.5, HOT, 0.95 * F], [0.8, OR2, 0.45 * F], [1, OR, 0]]);
     ell(b.tw * 0.2 * (0.6 + 0.4 * F), b.px * 0.34 * (0.7 + 0.3 * F), [[0, [255, 255, 255], F], [0.6, HOT, 0.9 * F], [1, HOT, 0]]);
+  }
+  ctx.restore();
+}
+
+// --- Entradas «Texto 3–7»: se componen desde un lienzo aparte ---
+const txTmp = { cv: null };
+function tintedCopy(src, r, rgb, a) {
+  if (!txTmp.cv) txTmp.cv = document.createElement('canvas');
+  const T = txTmp.cv; T.width = r.w; T.height = r.h;
+  const g = T.getContext('2d');
+  g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, r.w, r.h);
+  g.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+  g.globalCompositeOperation = 'source-in'; g.fillStyle = css(rgb, a); g.fillRect(0, 0, r.w, r.h);
+  g.globalCompositeOperation = 'source-over';
+  return T;
+}
+// deja el texto visible solo a la izquierda de xf, con borde suave de ancho F
+function wipeMask(sc, xf, F) {
+  const c2 = sc.ctx, CW = sc.cv.width, CH = sc.cv.height;
+  c2.save(); c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.globalCompositeOperation = 'destination-in';
+  if (F < 1) { c2.fillStyle = '#000'; c2.fillRect(0, 0, Math.max(0, xf), CH); }
+  else {
+    const gr = c2.createLinearGradient(xf - F, 0, xf, 0);
+    gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    c2.fillStyle = gr; c2.fillRect(0, 0, CW, CH);
+    c2.globalCompositeOperation = 'destination-in';
+  }
+  c2.restore();
+}
+function glowEll(ctx, rgb, x, y, rx, ry, al) {
+  if (al <= 0.003) return;
+  ctx.save(); ctx.translate(x, y); ctx.scale(Math.max(1, rx), Math.max(1, ry));
+  const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+  gr.addColorStop(0, css(rgb, clamp(al, 0, 1))); gr.addColorStop(0.5, css(rgb, clamp(al * 0.4, 0, 1))); gr.addColorStop(1, css(rgb, 0));
+  ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, 1, 0, 7); ctx.fill(); ctx.restore();
+}
+function textoFx(ctx, sc, p, b, kind, K, id) {
+  const r = textBox(sc, b, 1.2, 1.1);
+  const x0 = b.cx - b.tw / 2, x1 = b.cx + b.tw / 2;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  if (kind === 'texto4') {
+    // desenfoque que se enfoca
+    const bl = 1 - smooth(0.1, 0.8, p);
+    ctx.globalAlpha = 1 - bl * 0.8;
+    ctx.drawImage(sc.cv, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+    if (bl > 0.02) { const f = 1 + b.px * 0.16 * bl; ctx.globalAlpha = bl; ctx.drawImage(blurredCopy(sc.cv, r, f, f), r.x, r.y); }
+  } else if (kind === 'texto3') {
+    // barrido suave de izquierda a derecha con brillo blanco
+    const q = smooth(0, 1, p), F = b.px * 1.3;
+    const xf = x0 - F * 0.2 + (b.tw + F * 1.4) * q;
+    wipeMask(sc, xf, F);
+    ctx.drawImage(sc.cv, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+    const G = Math.sin(Math.PI * clamp(p, 0, 1)) * K;
+    if (G > 0.01) {
+      const f = 1 + b.px * 0.1;
+      const B = blurredCopy(sc.cv, r, f, f);
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9 * G; ctx.drawImage(B, r.x, r.y);
+    }
+    const H = smooth(0, 0.3, p) * (1 - smooth(0.6, 1, p)) * K;
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1;
+    glowEll(ctx, [255, 255, 255], b.cx, b.cy + b.px * 0.45, b.tw * 0.36, b.px * 0.5, 0.45 * H);
+    const gr = ctx.createLinearGradient(b.cx - b.tw * 0.45, 0, b.cx + b.tw * 0.45, 0);
+    gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.5, css([255, 255, 255], 0.8 * H)); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gr; ctx.fillRect(b.cx - b.tw * 0.45, b.cy + b.px * 0.45, b.tw * 0.9, Math.max(1, b.px * 0.02));
+  } else if (kind === 'texto5') {
+    // cintas de polvo naranja ondulan sobre el texto, que aparece de izquierda a derecha con brillo naranja que se vuelve blanco
+    const F = b.tw * 0.45, xf = x0 - F * 0.1 + (b.tw + F * 1.1) * p;
+    const OR = [255, 140, 40];
+    const wh = smooth(0.35, 0.95, p);
+    wipeMask(sc, xf, F);
+    ctx.drawImage(sc.cv, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+    const f = 1 + b.px * 0.12, B = blurredCopy(sc.cv, r, f, f);
+    const tint = tintedCopy(B, { x: 0, y: 0, w: r.w, h: r.h }, mixRgb(OR, [255, 255, 255], wh), 1);
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9 * (1 - smooth(0.7, 1, p)) * K; ctx.drawImage(tint, r.x, r.y);
+    ctx.globalAlpha = 1;
+    const head = x0 - b.tw * 0.1 + b.tw * 1.3 * p, tail = b.tw * 0.7;
+    const fade = 1 - smooth(0.8, 1, p);
+    for (let k = 0; k < 3; k++) {
+      const ph = k * 2.1, amp = b.px * (0.55 + 0.15 * k);
+      for (let i = 0; i < 70; i++) {
+        const u = i / 70, x = head - u * tail;
+        if (x < x0 - b.px || x > x1 + b.px) continue;
+        const y = b.cy + Math.sin((x - x0) / b.tw * 9 + ph + p * 6) * amp * (0.4 + 0.6 * (1 - u)) + (rnd(i, k, 4) - 0.5) * b.px * 0.22;
+        const rr = b.px * (0.015 + 0.03 * rnd(i, k + 9, 4)) * (1 - u * 0.6);
+        const al = (1 - u) * (0.5 + 0.5 * rnd(i, k + 3, 4)) * fade * K;
+        glowEll(ctx, mixRgb([255, 150, 50], [255, 235, 200], rnd(i, k, 6)), x, y, rr * 3, rr * 3, al);
+      }
+    }
+  } else if (kind === 'texto6') {
+    // barrido duro de izquierda a derecha
+    const q = smooth(0, 1, p), xf = x0 + b.tw * q;
+    const w = Math.max(0, xf - r.x);
+    if (w > 0) ctx.drawImage(sc.cv, r.x, r.y, Math.min(w, r.w), r.h, r.x, r.y, Math.min(w, r.w), r.h);
+  } else if (kind === 'texto7') {
+    // glitch: bloques que se revelan, franja desplazada, bordes magenta/cian y halo blanco que se encoge
+    const T = Math.max(8, Math.round(b.px * 0.2));
+    const cols = Math.ceil(r.w / T), rows = Math.ceil(r.h / T);
+    const seed = (id ? String(id).length : 1) + 3;
+    const thr = p * 1.5 - 0.1;
+    const band = r.y + ((p * 2.2) % 1) * r.h, bandH = b.px * 0.35;
+    const G = Math.sin(Math.PI * clamp(p, 0, 1)) * K;
+    const fr = b.px * 0.05 * G;
+    const slice = (dx, drawFn) => {
+      for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+        const v = rnd(i, j, seed) * 0.6 + (i / cols) * 0.4;
+        if (v > thr) continue;
+        const sx = r.x + i * T, sy = r.y + j * T, sw = Math.min(T, r.x + r.w - sx), sh = Math.min(T, r.y + r.h - sy);
+        const inBand = p < 0.95 && Math.abs(sy + sh / 2 - band) < bandH;
+        drawFn(sx, sy, sw, sh, dx + (inBand ? (rnd(j, 5, seed) - 0.5) * b.px * 0.9 : 0));
+      }
+    };
+    slice(0, (sx, sy, sw, sh, d) => ctx.drawImage(sc.cv, sx, sy, sw, sh, sx + d, sy, sw, sh));
+    if (fr > 0.5) {
+      const M = tintedCopy(sc.cv, r, [255, 40, 200], 1), C = tintedCopy(sc.cv, r, [40, 220, 255], 1);
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.6 * G;
+      slice(-fr, (sx, sy, sw, sh, d) => ctx.drawImage(M, sx - r.x, sy - r.y, sw, sh, sx + d, sy, sw, sh));
+      slice(fr, (sx, sy, sw, sh, d) => ctx.drawImage(C, sx - r.x, sy - r.y, sw, sh, sx + d, sy, sw, sh));
+    }
+    const H = (1 - smooth(0, 0.9, p)) * smooth(0, 0.1, p) * K;
+    if (H > 0.01) {
+      const f = 1 + b.px * 0.3 * (0.4 + 0.6 * (1 - p)), B = blurredCopy(sc.cv, r, f, f);
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.8 * H; ctx.drawImage(B, r.x, r.y);
+    }
   }
   ctx.restore();
 }
