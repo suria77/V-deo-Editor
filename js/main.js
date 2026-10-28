@@ -1058,3 +1058,32 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && sta
 
 // acceso para pruebas
 window.__editor = { state, app, play, pause, seek, importFiles, renderer, timeline, panels };
+
+// Toque con 2 dedos = deshacer, con 3 dedos = rehacer (toque corto, sin mover los dedos)
+{
+  let g = null;
+  const skip = (t) => { const tag = ((t && t.tagName) || '').toLowerCase(); return tag === 'input' || tag === 'textarea' || tag === 'select'; };
+  document.addEventListener('touchstart', (e) => {
+    if (skip(e.target)) { g = null; return; }
+    const pts = [...e.touches].map((t) => [t.clientX, t.clientY]);
+    if (!g || e.touches.length === 1) g = { t0: performance.now(), max: e.touches.length, start: pts, bad: false };
+    g.max = Math.max(g.max, e.touches.length);
+    if (e.touches.length > 3) g.bad = true;
+  }, { passive: true, capture: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!g) return;
+    if (!g.moved) g.moved = true;
+    const t = e.touches[0];
+    if (t && g.start[0] && Math.hypot(t.clientX - g.start[0][0], t.clientY - g.start[0][1]) > 14) g.bad = true;
+  }, { passive: true, capture: true });
+  document.addEventListener('touchend', (e) => {
+    if (!g || e.touches.length > 0) return;
+    const ok = !g.bad && performance.now() - g.t0 < 380;
+    const n = g.max; g = null;
+    if (!ok || (n !== 2 && n !== 3)) return;
+    pause();
+    if (n === 2) { if (canUndo()) { undo(); toast('Deshecho'); } else toast('Nada que deshacer'); }
+    else if (canRedo()) { redo(); toast('Rehecho'); } else toast('Nada que rehacer');
+  }, { passive: true, capture: true });
+  document.addEventListener('touchcancel', () => { g = null; }, { passive: true, capture: true });
+}

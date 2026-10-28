@@ -55,7 +55,7 @@ export function color(label, value, onInput, onCommit) {
 export function chips(options, value, onPick) {
   const wrap = h('div', { class: 'chips' });
   for (const o of options) {
-    const b = h('button', { class: o.id === value ? 'on' : '' }, o.i ? h('i', {}, o.i) : null, h('span', {}, o.n));
+    const b = h('button', { class: o.id === value ? 'on' : '' }, h('span', {}, o.n));
     b.addEventListener('click', () => {
       wrap.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
       b.classList.add('on');

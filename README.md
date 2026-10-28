@@ -43,3 +43,8 @@ Es un sitio estático: no hay que compilar nada. Se publica en Cloudflare Pages 
 ## V11
 - Texto 2–9: ocho nuevas animaciones de aparición de texto (zoom suave, barrido con brillo, apertura desde el centro, cintas naranjas, barrido duro, glitch, letras al azar, centro nítido). La duración se ajusta con el control de velocidad.
 - Se quitan los iconos/emoticonos de los botones de efectos.
+
+## V12
+- Texto 10 y Texto 11 (nuevas apariciones de texto).
+- Toque con 2 dedos = deshacer, con 3 dedos = rehacer.
+- Todos los efectos (luces, imagen, filtros, transiciones, animaciones) sin iconos y con botones más compactos.

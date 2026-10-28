@@ -1342,7 +1342,7 @@ export function drawText(ctx, c, lt, W, H) {
   // «Perro forma»: el texto se dibuja aparte y luego se compone con estela, cortes, destello y rayo
   const pfOn = inA.type === 'perroForma' && lt < inA.dur;
   const apOn = inA.type === 'apertura' && lt < inA.dur;
-  const scFx = ['disolver', 'estela', 'hiloDorado', 'texto1', 'texto3', 'texto4', 'texto5', 'texto6', 'texto7'].includes(inA.type) && lt < inA.dur ? inA.type : null;
+  const scFx = ['disolver', 'estela', 'hiloDorado', 'texto1', 'texto3', 'texto4', 'texto5', 'texto6', 'texto7', 'texto10', 'texto11'].includes(inA.type) && lt < inA.dur ? inA.type : null;
   const lcOn = inA.type === 'luciernaga' && lt < inA.dur;
   let dc = ctx, pfS = null;
   if (pfOn || apOn || scFx) {
@@ -1411,6 +1411,13 @@ export function drawText(ctx, c, lt, W, H) {
         gdx -= (g.x + g.w / 2) * (1 - e) * 0.8;
         gs *= 0.5 + 0.5 * e;
         a *= smooth(0, 0.45, pIn);
+        break;
+      }
+      case 'texto10': {
+        // las letras se forman en orden aleatorio a partir de chispas pequeñas y desenfocadas
+        const t0 = rnd(gi, 411, 3) * 0.6, gp = clamp((pIn - t0) / 0.35, 0, 1);
+        a *= smooth(0, 1, gp); gs *= 0.55 + 0.45 * ease(gp);
+        gdy += (rnd(gi, 412, 3) - 0.5) * px * 0.25 * (1 - ease(gp));
         break;
       }
       case 'texto8': {
@@ -1656,6 +1663,37 @@ function textoFx(ctx, sc, p, b, kind, K, id) {
     if (H > 0.01) {
       const f = 1 + b.px * 0.3 * (0.4 + 0.6 * (1 - p)), B = blurredCopy(sc.cv, r, f, f);
       ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.8 * H; ctx.drawImage(B, r.x, r.y);
+    }
+  } else if (kind === 'texto10') {
+    const bl = 1 - smooth(0.05, 0.85, p);
+    ctx.globalAlpha = 1 - bl * 0.75;
+    ctx.drawImage(sc.cv, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+    if (bl > 0.02) {
+      const f = 1 + b.px * 0.12 * bl, B = blurredCopy(sc.cv, r, f, f);
+      ctx.globalAlpha = bl; ctx.drawImage(B, r.x, r.y);
+      const G = bl * K, fr = b.px * 0.05 * bl;
+      const O = tintedCopy(B, { x: 0, y: 0, w: r.w, h: r.h }, [255, 150, 60], 1), Cy = tintedCopy(sc.cv, r, [80, 200, 255], 1);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5 * G; ctx.drawImage(O, r.x + fr, r.y);
+      ctx.globalAlpha = 0.4 * G; ctx.drawImage(Cy, r.x - fr, r.y);
+    }
+  } else if (kind === 'texto11') {
+    // se revela desde el centro hacia los lados con bordes magenta y un halo blanco que se apaga
+    const q = smooth(0, 0.7, p), hw = b.tw / 2 * q + b.px * 0.1;
+    const xa = Math.max(r.x, b.cx - hw), xb = Math.min(r.x + r.w, b.cx + hw);
+    const draw = (img, ox, al) => { if (xb > xa) { ctx.globalAlpha = al; ctx.drawImage(img, xa - r.x, 0, xb - xa, r.h, xa + ox, r.y, xb - xa, r.h); } };
+    if (xb > xa) { ctx.globalAlpha = 1; ctx.drawImage(sc.cv, xa, r.y, xb - xa, r.h, xa, r.y, xb - xa, r.h); }
+    const G = Math.sin(Math.PI * clamp(p / 0.8, 0, 1)) * K;
+    if (G > 0.01) {
+      const M = tintedCopy(sc.cv, r, [255, 50, 210], 1), fr = b.px * 0.06;
+      ctx.globalCompositeOperation = 'lighter';
+      draw(M, -fr, 0.7 * G); draw(M, fr, 0.35 * G);
+    }
+    const H = (1 - smooth(0.25, 1, p)) * smooth(0, 0.1, p) * K;
+    if (H > 0.01) {
+      const f = 1 + b.px * 0.1, B = blurredCopy(sc.cv, r, f, f);
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9 * H;
+      if (xb > xa) ctx.drawImage(B, xa - r.x, 0, xb - xa, r.h, xa, r.y, xb - xa, r.h);
     }
   }
   ctx.restore();
