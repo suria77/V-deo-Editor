@@ -247,6 +247,24 @@ function p3draw(ctx, kind, x, y, rx, ry, a) {
   ctx.drawImage(p3Sprite(kind), x - rx, y - ry, rx * 2, ry * 2);
 }
 
+
+// ---- «Partículas 4»: grandes bokeh rosados y coral que nacen abajo, suben despacio y se apagan; chispas ámbar y resplandor cálido (recreado de la muestra) ----
+const p4Cache = new Map();
+function p4Sprite(rgb) { // disco muy suave con un borde algo más claro
+  const key = rgb.join(',');
+  let sp = p4Cache.get(key);
+  if (sp) return sp;
+  sp = document.createElement('canvas'); sp.width = sp.height = 256;
+  const g = sp.getContext('2d'), gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  gr.addColorStop(0, css(rgb, 0.8)); gr.addColorStop(0.4, css(rgb, 0.78)); gr.addColorStop(0.62, css(rgb, 0.6));
+  gr.addColorStop(0.82, css(rgb, 0.26)); gr.addColorStop(0.94, css(rgb, 0.06)); gr.addColorStop(1, css(rgb, 0));
+  g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+  p4Cache.set(key, sp);
+  return sp;
+}
+const P4 = { n: 22, life: 3.0, rise: 0.86, drift: 0.1, rmin: 55, rmax: 250, alpha: 0.27, decay: 1.9, sparks: 30 };
+const P4COL = [[240, 184, 198], [250, 150, 110], [226, 96, 80], [208, 160, 192]];
+
 function particles(ctx, c, t, lt, W, H, g) {
   const id = c.fx, I = c.intensity, sp = c.speed, sz = c.size, seed = c.seed;
   const S = Math.min(W, H) / 1080;
@@ -961,6 +979,50 @@ function particles(ctx, c, t, lt, W, H, g) {
           blob(ctx, [255, 230, 150], x - rx * 0.3, y + ry * 0.55, rx * 0.8, rx * 0.8, 0.3 * oA * k8);   // disco claro inferior
           blob(ctx, white, x + rx * 0.22, y + ry * 0.05, 6 * S, ry * 0.45, 0.22 * oA * k8);                  // reflejo vertical
         }
+      }
+      break;
+    }
+    case 'particulas4': {
+      // Partículas 4: resplandor cálido abajo + bokeh rosa/coral grandes que suben y se apagan + chispas ámbar diminutas.
+      const k8 = clamp(I * 1.25, 0, 1) * g;
+      {
+        const gr = ctx.createLinearGradient(0, 0, 0, H);
+        const st = [[0, [22, 6, 14]], [0.45, [26, 7, 16]], [0.55, [34, 11, 19]], [0.65, [42, 15, 21]], [0.75, [54, 22, 22]], [0.85, [68, 29, 22]], [0.95, [82, 36, 22]], [1, [90, 40, 22]]];
+        for (const [o, c3] of st) gr.addColorStop(o, css(c3, k8));
+        ctx.globalAlpha = 1; ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
+      }
+      {
+        const tex = p2Texture(), cell = 11 * S, tw = 160 * cell, ox = (T * 2 * S) % tw;
+        ctx.globalAlpha = 0.045 * k8; ctx.imageSmoothingEnabled = true;
+        for (let yy = 0; yy < H; yy += tw) for (let xx = -ox; xx < W; xx += tw) ctx.drawImage(tex, xx, yy, tw, tw);
+      }
+      for (let i = 0; i < N(P4.n); i++) {
+        const life = P4.life * (0.85 + 0.3 * rnd(i, 401, seed)), q = T / life + rnd(i, 402, seed) + i * 0.381966, cy = Math.floor(q), p = fract(q);
+        const k = 403 + cy * 9;
+        const x0 = W * (0.02 + 0.96 * rnd(i, k, seed)), dx = (rnd(i, k + 1, seed) - 0.5 + P4.drift) * W * 0.14;
+        const r0 = (P4.rmin + (P4.rmax - P4.rmin) * Math.pow(rnd(i, k + 2, seed), 1.7)) * S * sz;
+        const y = H * (1.06 - P4.rise * p);
+        const x = x0 + dx * p + Math.sin(T * 0.7 + i * 2.1) * 10 * S;
+        const R = r0 * (0.85 + 0.35 * p);
+        const u = rnd(i, k + 3, seed);
+        const col = u < 0.5 ? P4COL[0] : u < 0.75 ? P4COL[1] : u < 0.88 ? P4COL[2] : P4COL[3];
+        const amp = (0.3 + 0.7 * rnd(i, k + 4, seed)) * smooth(0, 0.1, p) * Math.pow(1 - p, P4.decay);
+        const a = P4.alpha * amp * k8;
+        if (a > 0.003) {
+          const sp4 = p4Sprite(mixRgb(col, base, 0.1));
+          ctx.globalAlpha = clamp(a * 0.45, 0, 1); ctx.drawImage(sp4, x - R * 1.9, y - R * 1.9, R * 3.8, R * 3.8); // halo difuso
+          ctx.globalAlpha = clamp(a, 0, 1); ctx.drawImage(sp4, x - R, y - R, R * 2, R * 2);
+        }
+      }
+      // chispas ámbar
+      for (let i = 0; i < N(P4.sparks); i++) {
+        const life = 1.4 + 1.4 * rnd(i, 501, seed), q = T / life + rnd(i, 502, seed), cy = Math.floor(q), p = fract(q), k = 503 + cy * 5;
+        const x = W * (0.02 + 0.96 * rnd(i, k, seed)) + Math.sin(T * 1.3 + i) * 6 * S;
+        const y = H * (0.98 - (0.1 + 0.55 * Math.pow(rnd(i, k + 1, seed), 0.9)) - 0.05 * p);
+        const tw = 0.55 + 0.45 * Math.sin(T * (4 + 6 * rnd(i, k + 2, seed)) + i * 7);
+        const a = smooth(0, 0.15, p) * (1 - smooth(0.7, 1, p)) * tw * 0.8 * k8;
+        const r = (6 + 4 * rnd(i, k + 3, seed)) * S * sz;
+        if (a > 0.01) { blob(ctx, [255, 180, 80], x, y, r * 2.2, r * 2.2, a * 0.35); blob(ctx, [255, 214, 120], x, y, r, r, Math.min(1, a * 1.4)); }
       }
       break;
     }
@@ -1812,7 +1874,7 @@ export class Overlay {
 export function postParams(act, t) {
   const p = { glitch: 0, rgb: 0, vhs: 0, grain: 0, flash: 0, zoom: 1, blur: 0, pixel: 0, mirror: 0, bw: 0, sepia: 0, vig: 0, glow: 0, shake: [0, 0] };
   for (const c of act) {
-    if (c.type === 'fx' && c.kind === 'particles' && (c.fx === 'particulas' || c.fx === 'particulas2' || c.fx === 'particulas3')) { // grano fino de «Partículas» 1, 2 y 3
+    if (c.type === 'fx' && c.kind === 'particles' && (c.fx === 'particulas' || c.fx === 'particulas2' || c.fx === 'particulas3' || c.fx === 'particulas4')) { // grano fino de «Partículas» 1 a 4
       const lg = t - c.start, gg = clamp(Math.min(1, lg / Math.max(0.01, c.fade), (c.dur - lg) / Math.max(0.01, c.fade)), 0, 1);
       p.grain = Math.max(p.grain, 0.09 * c.intensity * gg);
     }

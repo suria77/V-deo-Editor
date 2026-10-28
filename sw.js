@@ -1,8 +1,8 @@
 // Lumière · funcionamiento sin conexión.
 // Los archivos propios: primero la red (así siempre tienes la última versión) y, si no hay red o Cloudflare falla, la copia guardada.
 // Tipografías y modelo de subtítulos (otros dominios): se guardan al usarlos la primera vez.
-const CACHE = 'lumiere-v8';
-const CORE = ['./', 'index.html', 'manifest.webmanifest', 'css/style.css?v=18', 'js/main.js?v=18', 'icon-64.png', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'lumiere-v9';
+const CORE = ['./', 'index.html', 'manifest.webmanifest', 'css/style.css?v=19', 'js/main.js?v=19', 'icon-64.png', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 const EXT = /(fonts\.googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net|huggingface\.co|hf\.co|cdn-lfs)/;
 
 self.addEventListener('install', (e) => {
