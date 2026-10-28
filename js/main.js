@@ -508,7 +508,7 @@ stageWrap.addEventListener('pointerdown', (e) => {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   let c = selectedClip();
   const t = state.time;
-  const isVis = (k) => k && (k.type === 'video' || k.type === 'image' || k.type === 'text') && t >= k.start && t < k.start + k.dur;
+  const isVis = (k) => k && (k.type === 'video' || k.type === 'image' || k.type === 'text' || (k.type === 'fx' && k.kind === 'spectrum')) && t >= k.start && t < k.start + k.dur;
   if (pointers.size === 1) {
     if (onCanvas(e)) {
       // tocar algo de la imagen lo selecciona (si ya está en el grupo seleccionado, el grupo se mantiene)
@@ -528,11 +528,12 @@ stageWrap.addEventListener('pointerdown', (e) => {
   if (!c || !isVis(c)) { gesture = null; return; }
   const r = canvas.getBoundingClientRect();
   // todos los clips visuales/texto seleccionados se mueven juntos
-  const items = (state.sel.has(c.id) ? selectedClips() : [c]).filter((k) => k.type === 'video' || k.type === 'image' || k.type === 'text');
+  const items = (state.sel.has(c.id) ? selectedClips() : [c]).filter((k) => k.type === 'video' || k.type === 'image' || k.type === 'text' || (k.type === 'fx' && k.kind === 'spectrum'));
   const lt = (k) => Math.max(0, Math.min(k.dur, state.time - k.start));
   const snapItems = () => items.map((k) => {
-    const P = k.type === 'text' ? ['x', 'y', 'size', 'rot'] : ['tf.x', 'tf.y', 'tf.scale', 'tf.rot'];
-    return { k, P, x0: valueAt(k, P[0], lt(k)), y0: valueAt(k, P[1], lt(k)), s0: valueAt(k, P[2], lt(k)), r0: valueAt(k, P[3], lt(k)) || 0, lt: lt(k) };
+    const sp = k.type === 'fx';
+    const P = k.type === 'text' ? ['x', 'y', 'size', 'rot'] : sp ? ['x', 'y', 'width', 'rot'] : ['tf.x', 'tf.y', 'tf.scale', 'tf.rot'];
+    return { k, P, sp, h0: sp ? (k.height ?? 0.32) : 0, rad0: sp ? (k.radius ?? 0.2) : 0, x0: valueAt(k, P[0], lt(k)), y0: valueAt(k, P[1], lt(k)), s0: valueAt(k, P[2], lt(k)), r0: valueAt(k, P[3], lt(k)) || 0, lt: lt(k) };
   });
   gesture = { r, items: snapItems(), snapItems, p0: { x: e.clientX, y: e.clientY }, d0: null, a0: 0, moved: false };
 });
@@ -554,6 +555,7 @@ stageWrap.addEventListener('pointermove', (e) => {
     const mdx = (mid.x - g.m0.x) / g.r.width, mdy = (mid.y - g.m0.y) / g.r.height;
     for (const it of g.items) {
       if (it.k.type === 'text') setValue(it.k, 'size', it.lt, Math.max(0.015, Math.min(0.4, it.s0 * k)));
+      else if (it.sp) { setValue(it.k, 'width', it.lt, Math.max(0.1, Math.min(1.6, it.s0 * k))); setValue(it.k, 'height', it.lt, Math.max(0.04, Math.min(0.9, it.h0 * k))); setValue(it.k, 'radius', it.lt, Math.max(0.05, Math.min(0.6, it.rad0 * k))); }
       else setValue(it.k, 'tf.scale', it.lt, Math.max(0.05, Math.min(6, it.s0 * k)));
       if (da !== 0 || g.rotated) {
         g.rotated = true;
@@ -564,7 +566,7 @@ stageWrap.addEventListener('pointermove', (e) => {
       }
       if (Math.abs(mdx) + Math.abs(mdy) > 0.003 || g.panned) {
         g.panned = true;
-        const m = it.k.type === 'text' ? 2 : 1;
+        const m = it.k.type === 'text' || it.sp ? 2 : 1;
         setValue(it.k, it.P[0], it.lt, it.x0 + mdx * m); setValue(it.k, it.P[1], it.lt, it.y0 + mdy * m);
       }
     }
@@ -573,7 +575,7 @@ stageWrap.addEventListener('pointermove', (e) => {
     if (Math.abs(dx) + Math.abs(dy) < 0.004 && !g.moved) return;
     g.moved = true;
     for (const it of g.items) {
-      const m = it.k.type === 'text' ? 2 : 1;
+      const m = it.k.type === 'text' || it.sp ? 2 : 1;
       setValue(it.k, it.P[0], it.lt, it.x0 + dx * m); setValue(it.k, it.P[1], it.lt, it.y0 + dy * m);
     }
   }

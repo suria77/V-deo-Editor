@@ -1,6 +1,6 @@
 // Capa 2D: partículas (sin estado, deterministas → perfectas al saltar por la línea de tiempo) y texto animado.
 import { PARTICLES } from './presets.js';
-import { drawSpectrum } from './spectrum.js';
+import { drawSpectrum, specBounds } from './spectrum.js';
 import { bus } from './state.js';
 import { animClip } from './kf.js';
 import { xfadeAt } from './xfade.js';
@@ -1341,7 +1341,7 @@ export function drawText(ctx, c, lt, W, H) {
   // «Perro forma»: el texto se dibuja aparte y luego se compone con estela, cortes, destello y rayo
   const pfOn = inA.type === 'perroForma' && lt < inA.dur;
   const apOn = inA.type === 'apertura' && lt < inA.dur;
-  const scFx = ['disolver', 'estela', 'hiloDorado'].includes(inA.type) && lt < inA.dur ? inA.type : null;
+  const scFx = ['disolver', 'estela', 'hiloDorado', 'texto1'].includes(inA.type) && lt < inA.dur ? inA.type : null;
   const lcOn = inA.type === 'luciernaga' && lt < inA.dur;
   let dc = ctx, pfS = null;
   if (pfOn || apOn || scFx) {
@@ -1395,6 +1395,13 @@ export function drawText(ctx, c, lt, W, H) {
         cw = clamp(1 - age / life, 0, 1);
         a *= clamp(0.55 + age / 0.03, 0, 1);
         gdy -= cw * cw * px * 0.06;
+        break;
+      }
+      case 'texto1': {
+        // las letras de los extremos aparecen primero y las del centro, tapadas por el destello, las últimas
+        const u = n > 1 ? Math.abs(frac * 2 - 1) : 0;
+        const dl = 0.3 * Math.pow(1 - u, 1.1);
+        a *= smooth(0, 1, clamp((pIn + 0.1 - dl) / 0.2, 0, 1)) * smooth(0, 0.06, pIn);
         break;
       }
       case 'luciernaga': {
@@ -1462,10 +1469,53 @@ export function drawText(ctx, c, lt, W, H) {
     const box = { cx, cy, tw: maxLW * scale, th: lines.length * lh * scale, px: px * scale };
     if (scFx === 'disolver') disolver(ctx, pfS, pIn, box);
     else if (scFx === 'estela') estela(ctx, pfS, pIn, box);
+    else if (scFx === 'texto1') texto1(ctx, pfS, pIn, box, inA.flare == null ? 1 : inA.flare);
     else hiloDorado(ctx, pfS, pIn, lt, box);
   }
   ctx.restore();
   return true;
+}
+
+// Entrada «Texto 1»: el texto aparece desenfocado y se enfoca mientras un destello de lente naranja-blanco con rayo horizontal cruza su centro
+function texto1(ctx, sc, p, b, flareK) {
+  const r = textBox(sc, b, 1.0, 0.9);
+  const bl = 1 - smooth(0.1, 0.5, p);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1 - bl * 0.85;
+  ctx.drawImage(sc.cv, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+  if (bl > 0.02) {
+    const f = 1 + b.px * 0.14 * bl;
+    const B = blurredCopy(sc.cv, r, f, f);
+    ctx.globalAlpha = bl; ctx.drawImage(B, r.x, r.y);
+  }
+  const F = smooth(0.0, 0.2, p) * (1 - smooth(0.26, 0.72, p)) * flareK;
+  if (F > 0.004) {
+    const cool = smooth(0.28, 0.55, p);
+    const ell = (rx, ry, stops) => {
+      ctx.save(); ctx.translate(b.cx, b.cy); ctx.scale(rx, ry);
+      const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+      for (const [o, c3, al] of stops) gr.addColorStop(o, css(c3, clamp(al, 0, 1)));
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, 1, 0, 7); ctx.fill(); ctx.restore();
+    };
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 1;
+    const OR = [255, 118, 38], OR2 = [255, 150, 70], HOT = mixRgb([255, 246, 232], [200, 218, 255], cool);
+    ell(b.tw * 0.8 * (0.7 + 0.3 * F), b.px * 1.5, [[0, OR, 0.3 * F], [0.45, [230, 80, 25], 0.18 * F], [1, [200, 60, 20], 0]]);
+    ell(b.tw * 0.62 * (0.7 + 0.3 * F), b.px * 0.5, [[0, OR2, 0.4 * F], [0.55, OR, 0.26 * F], [1, OR, 0]]);
+    ell(b.tw * 0.42 * (0.7 + 0.3 * F), b.px * 0.78, [[0, OR2, 0.6 * F], [0.5, OR, 0.34 * F], [1, OR, 0]]);
+    // rayo horizontal
+    for (const [hh, al, len] of [[b.px * 0.025, 0.7, 1.0], [b.px * 0.34, 0.4, 0.9]]) {
+      const L = b.tw * len;
+      const gr = ctx.createLinearGradient(b.cx - L, 0, b.cx + L, 0);
+      gr.addColorStop(0, css(OR, 0)); gr.addColorStop(0.35, css(OR2, 0.6 * al * F)); gr.addColorStop(0.5, css(HOT, al * F)); gr.addColorStop(0.65, css(OR2, 0.6 * al * F)); gr.addColorStop(1, css(OR, 0));
+      ctx.fillStyle = gr; ctx.fillRect(b.cx - L, b.cy - hh / 2, L * 2, hh);
+    }
+    ell(b.tw * 0.3 * (0.6 + 0.4 * F), b.px * 0.52 * (0.7 + 0.3 * F), [[0, HOT, F], [0.5, HOT, 0.95 * F], [0.8, OR2, 0.45 * F], [1, OR, 0]]);
+    ell(b.tw * 0.2 * (0.6 + 0.4 * F), b.px * 0.34 * (0.7 + 0.3 * F), [[0, [255, 255, 255], F], [0.6, HOT, 0.9 * F], [1, HOT, 0]]);
+  }
+  ctx.restore();
 }
 
 const scratch = { cv: null, ctx: null };
@@ -1864,7 +1914,7 @@ export class Overlay {
     const specs = media ? act.filter((c) => c.type === 'fx' && c.kind === 'spectrum').sort((a, b) => a.start - b.start) : [];
     if (texts.length || specs.length) {
       this.tx.ctx.setTransform(1, 0, 0, 1, 0, 0); this.tx.ctx.clearRect(0, 0, W, H);
-      for (const c of specs) { if (drawSpectrum(this.tx.ctx, c, t, W, H, project, media)) usedT = true; }
+      for (const c of specs) { if (drawSpectrum(this.tx.ctx, c, t, W, H, project, media)) usedT = true; textBounds.set(c.id, specBounds(c, W, H)); }
       for (const c of texts) { if (drawText(this.tx.ctx, c, t - c.start, W, H)) usedT = true; }
     }
     return { normal: usedN ? this.n.cv : null, add: usedA ? this.a.cv : null, text: usedT ? this.tx.cv : null, post };

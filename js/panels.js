@@ -569,8 +569,9 @@ export class Panels {
 
       b.append(sec('tanim', 'Animación', '✨',
         h('div', { class: 'field' }, h('label', {}, 'Aparición')),
-        chips(TEXT_IN, c.inAnim.type, (v) => { c.inAnim.type = v; const d = TEXT_IN.find((x) => x.id === v); if (d && d.dur) c.inAnim.dur = d.dur; live(); done(); app.preview(c.start, Math.min(c.dur, c.inAnim.dur + 0.5)); }),
-        S('Duración de aparición', c.inAnim, 'dur', 0.1, 3, 0.05, secs),
+        chips(TEXT_IN, c.inAnim.type, (v) => { c.inAnim.type = v; const d = TEXT_IN.find((x) => x.id === v); if (d && d.dur) c.inAnim.dur = d.dur; live(); done(); app.preview(c.start, Math.min(c.dur, c.inAnim.dur + 0.5)); this.render(); }),
+        S(c.inAnim.type === 'texto1' ? 'Velocidad: duración de la aparición' : 'Duración de aparición', c.inAnim, 'dur', 0.1, 3, 0.05, secs),
+        c.inAnim.type === 'texto1' ? slider('Intensidad del destello', c.inAnim.flare == null ? 1 : c.inAnim.flare, 0, 1.5, 0.05, (v) => { c.inAnim.flare = v; live(); }, done, pct) : null,
         h('div', { class: 'field' }, h('label', {}, 'Desaparición')),
         chips(TEXT_OUT, c.outAnim.type, (v) => { c.outAnim.type = v; live(); done(); app.preview(Math.max(c.start, c.start + c.dur - c.outAnim.dur - 0.3), c.outAnim.dur + 0.3); }),
         S('Duración de desaparición', c.outAnim, 'dur', 0.1, 3, 0.05, secs),

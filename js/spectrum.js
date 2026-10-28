@@ -138,6 +138,22 @@ function rrect(ctx, x, y, w, h, r) {
   ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h);
 }
 
+// recuadro del espectro en píxeles de pantalla (para seleccionarlo y moverlo sobre la imagen)
+export function specBounds(cIn, W, H) {
+  const c = { ...SPEC_DEFAULT, ...cIn };
+  const st = c.style || c.fx, S = Math.min(W, H);
+  const ox = W / 2 + c.x * W / 2, oy = H / 2 + c.y * H / 2;
+  let w, h, ly = 0;
+  if (st === 'circle' || st === 'ring') { const e = (c.radius + c.height * 1.6) * S; w = h = 2 * e; }
+  else {
+    w = c.width * W;
+    const sym = st === 'mirror' || st === 'wave' || c.mirror;
+    h = (sym ? 2 : 1) * c.height * H; if (!sym) ly = -h / 2;
+  }
+  const rot = (c.rot * Math.PI) / 180;
+  return { cx: ox - Math.sin(rot) * ly, cy: oy + Math.cos(rot) * ly, w: w + 24, h: h + 24, rot, a: 1 };
+}
+
 export function hasSignal(project, media, c, t) {
   return !!magsAt(project, media, t, c.source || 'all');
 }
