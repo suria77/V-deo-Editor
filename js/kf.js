@@ -33,7 +33,7 @@ KF_PROPS.image = KF_PROPS.video.filter((p) => p[0] !== 'volume');
 export const propsFor = (c) => (c.type === 'fx' && c.kind !== 'particles' ? KF_PROPS.fx.slice(0, 1) : KF_PROPS[c.type] || []);
 export const propDef = (c, path) => propsFor(c).find((p) => p[0] === path);
 
-const EPS = 1 / 25;
+const EPS = 1 / 120;
 
 export function getPath(o, p) {
   const ks = p.split('.');

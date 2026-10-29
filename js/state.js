@@ -218,8 +218,10 @@ export function detachAudio(id, media) {
   const c = getClip(id);
   if (!c || c.type !== 'video' || c.muted) return null;
   const m = media.get(c.media);
-  if (!m) return null;
+  if (!m || !m.buffer) return null;
   const a = makeAudioClip(m, c.start);
+  if (c.kf && c.kf.volume) a.kf = { volume: structuredClone(c.kf.volume) };
+  if (c.kfEase) a.kfEase = structuredClone(c.kfEase);
   a.dur = c.dur; a.in = c.in; a.speed = c.speed || 1; a.volume = c.volume ?? 1; a.afadeIn = c.afadeIn || 0; a.afadeOut = c.afadeOut || 0;
   c.muted = true;
   state.project.clips.push(a);
@@ -255,6 +257,7 @@ export function splitClips(ids, t) {
     if ('in' in c) n.in = c.in + left * (c.speed || 1);
     if (n.transIn) n.transIn = { type: 'none', dur: 0.5 };
     if (c.transOut) c.transOut = { type: 'none', dur: 0.5 };
+    if (c.xfade) c.xfade = null; // la transición pertenece al corte con el clip siguiente, que ahora es la mitad derecha
     if (n.afadeIn) n.afadeIn = 0;
     if (c.afadeOut) c.afadeOut = 0;
     if (c.words) { splitWords(c, n, left); }

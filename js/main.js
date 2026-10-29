@@ -10,6 +10,7 @@ import { AudioEngine } from './audio.js';
 import { Timeline } from './timeline.js';
 import { Panels } from './panels.js';
 import { startRecorder, pickMime, offlineConfig, exportOffline } from './exporter.js';
+import { clearSpectrumCache } from './spectrum.js';
 import { saveProject, loadSaved, listProjects, openSavedProject, deleteProject, renameProject, duplicateProject, libList, libAdd, libGet, libDelete, libRename, askPersistent, storageInfo } from './storage.js';
 import { ASPECTS, loadExtraFonts, PARTICLES, POSTFX } from './presets.js';
 import { SPEC_STYLES } from './spectrum.js';
@@ -84,6 +85,8 @@ function farFrom(c, t) { return (t < c.start ? c.start - t : t > c.start + c.dur
 function releaseVideo(id) {
   const v = videoEls.get(id);
   if (!v) return;
+  const c = getClip(id), m = c && state.media.get(c.media);
+  if (m && m.audioFallback) return; // estos suenan por su propio <video> ya autorizado: no se recrean
   v.pause(); v.removeAttribute('src'); v.load(); v.remove(); videoEls.delete(id); renderer.releaseClip(id);
 }
 function cleanupVideos() {
@@ -140,7 +143,9 @@ function syncVideos(t) {
 
 // ---------- bucle de dibujo ----------
 let playT0 = 0, playFrom = 0;
+let loopErr = 0;
 function loop(now) {
+  requestAnimationFrame(loop);
   if (state.playing) {
     const dur = projectDuration();
     let t = playFrom + (now - playT0) / 1000;
@@ -156,12 +161,17 @@ function loop(now) {
   }
   if (dirty && !offlineBusy) {
     dirty = false;
-    syncVideos(state.time);
-    renderer.render({ project: state.project, t: state.time, media: state.media, videoFor, overlay });
-    if (exporting) exporting.progress(state.time / Math.max(0.01, projectDuration()));
-    else updateSelBoxes();
+    try {
+      syncVideos(state.time);
+      renderer.render({ project: state.project, t: state.time, media: state.media, videoFor, overlay });
+      if (exporting) exporting.progress(state.time / Math.max(0.01, projectDuration()));
+      else updateSelBoxes();
+    } catch (err) {
+      // un error en un clip no debe congelar toda la vista previa
+      if (loopErr++ < 3) toast('Hay un clip con datos dañados: ' + (err && err.message ? err.message : 'error'), 5000);
+      console.error(err);
+    }
   }
-  requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
@@ -715,6 +725,7 @@ async function runExport(q, preset = { fps: 30, br: q >= 1080 ? 12e6 : 7e6 }) {
     exporting = { progress, finish: () => {} };
     renderer.resize(d.w, d.h);
     try {
+      try { await Promise.all(state.project.clips.filter((k) => k.type === 'text' && k.font).map((k) => document.fonts.load(`${k.italic ? 'italic ' : ''}${k.weight || 400} 40px "${k.font}"`))); await document.fonts.ready; } catch (e) { /* sin tipografías extra */ }
       const abuf = wantAudio ? await audio.renderOffline(state.project, state.media, dur) : null;
       const blob = await exportOffline({
         canvas, w: d.w, h: d.h, fps, dur, cfg, audioBuffer: abuf, onProgress: progress, isCancelled: () => cancelled,
@@ -813,7 +824,6 @@ async function switchTo(data) {
     for (const r of data.media) {
       try { await createMedia(r.blob, r.id, { name: r.name, thumb: r.thumb, saved: true }); } catch (e) { /* medio perdido */ }
     }
-    data.project.clips = data.project.clips.filter((c) => !c.media || state.media.has(c.media));
     loadProject(data.project);
   } else {
     loadProject({ id: uid('p'), name: 'Mi vídeo', aspect: '9:16', w: 1080, h: 1920, fps: 30, bg: '#000000', clips: [] });
@@ -970,6 +980,7 @@ const panels = new Panels(app);
 // ---------- eventos ----------
 bus.on('change', (e) => {
   dirty = true;
+  clearSpectrumCache();
   $('tcTotal').textContent = fmtTime(projectDuration());
   if (e && e.aspect) applyPreviewSize();
   if (e && e.structural) { cleanupVideos(); updateEmpty(); }
@@ -979,9 +990,11 @@ bus.on('time', () => { $('tcNow').textContent = fmtTime(state.time); });
 bus.on('fontloaded', () => (dirty = true));
 const setSaveState = (ok) => { const d = $('saveDot'); if (!d) return; d.className = 'save-dot ' + (ok ? 'ok' : 'pend'); d.title = ok ? 'Guardado' : 'Guardando…'; };
 let saveTimer = null, saving = Promise.resolve(), warnedBig = false;
+let appReady = false; // hasta que se recupera el proyecto guardado no se guarda nada (evita pisarlo con uno vacío)
 function doSave() {
   clearTimeout(saveTimer);
   saveTimer = null;
+  if (!appReady) return saving;
   saving = saving.then(async () => {
     const r = await saveProject(state.project, state.media);
     setSaveState(r.ok);
@@ -1155,6 +1168,7 @@ $('zOut').onclick = () => { zoom.value = Math.max(20, +zoom.value / 1.35); timel
 document.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  if (exporting || offlineBusy || !$('modal').hidden) return;
   if (e.code === 'Space') { e.preventDefault(); state.playing ? pause() : play(); }
   else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); pause(); e.shiftKey ? redo() : undo(); }
   else if (e.key === 'Delete' || e.key === 'Backspace') { const ids = targetIds(); if (ids.length) { e.preventDefault(); removeClips(ids); } }
@@ -1179,10 +1193,10 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && sta
     }
     const p = saved.project;
     const before = p.clips.length;
-    p.clips = p.clips.filter((c) => !c.media || state.media.has(c.media));
+    const lost = p.clips.filter((c) => c.media && !state.media.has(c.media)).length;
     loadProject(p);
     bus.emit('media');
-    toast(p.clips.length < before ? 'Proyecto recuperado, pero faltan ' + (before - p.clips.length) + ' clips cuyo archivo no se pudo guardar (importa de nuevo el vídeo).' : 'Proyecto recuperado ✓', p.clips.length < before ? 9000 : 2500);
+    toast(lost ? 'Proyecto recuperado, pero faltan ' + lost + ' clips cuyo archivo no se pudo guardar. Se conservan en la línea de tiempo: pulsa «Sustituir» e importa de nuevo el vídeo.' : 'Proyecto recuperado ✓', lost ? 9000 : 2500);
   } else if (saved && saved.project) {
     loadProject(saved.project);
   }
@@ -1191,6 +1205,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && sta
   timeline.render();
   $('tcTotal').textContent = fmtTime(projectDuration());
   dirty = true;
+  appReady = true;
 })();
 
 // acceso para pruebas

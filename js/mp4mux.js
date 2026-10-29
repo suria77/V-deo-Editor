@@ -5,6 +5,9 @@ function u8(n) { return [n & 255]; }
 function u16(n) { return [(n >> 8) & 255, n & 255]; }
 function u32(n) { return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]; }
 function i32(n) { return u32(n >>> 0); }
+// tablas grandes sin 'spread' (con muchos fotogramas el spread revienta la pila)
+function u32a(arr, f = (x) => x) { const o = new Uint8Array(arr.length * 4); const dv = new DataView(o.buffer); for (let i = 0; i < arr.length; i++) dv.setUint32(i * 4, f(arr[i]) >>> 0); return o; }
+function pairs(arr) { const o = new Uint8Array(arr.length * 8); const dv = new DataView(o.buffer); for (let i = 0; i < arr.length; i++) { dv.setUint32(i * 8, arr[i][0] >>> 0); dv.setUint32(i * 8 + 4, arr[i][1] >>> 0); } return o; }
 function str(s) { return [...enc.encode(s)]; }
 
 function box(type, ...parts) {
@@ -71,20 +74,20 @@ export class Mp4Mux {
     for (const d of durs) { const l = runs[runs.length - 1]; if (l && l[1] === d) l[0]++; else runs.push([1, d]); }
     const parts = [
       full('stsd', 0, 0, u32(1), entry),
-      full('stts', 0, 0, u32(runs.length), ...runs.map(([c, d]) => [...u32(c), ...u32(d)])),
+      full('stts', 0, 0, u32(runs.length), pairs(runs)),
     ];
     if (cts && cts.some((c) => c !== 0)) {
       const cr = [];
       for (const c of cts) { const l = cr[cr.length - 1]; if (l && l[1] === c) l[0]++; else cr.push([1, c]); }
-      parts.push(full('ctts', 1, 0, u32(cr.length), ...cr.map(([n, c]) => [...u32(n), ...i32(c)])));
+      parts.push(full('ctts', 1, 0, u32(cr.length), pairs(cr)));
     }
     if (tr === this.v) {
       const keys = tr.samples.map((x, i) => (x.key ? i + 1 : 0)).filter(Boolean);
-      parts.push(full('stss', 0, 0, u32(keys.length), ...keys.map((k) => u32(k))));
+      parts.push(full('stss', 0, 0, u32(keys.length), u32a(keys)));
     }
     parts.push(full('stsc', 0, 0, u32(1), u32(1), u32(1), u32(1)));
-    parts.push(full('stsz', 0, 0, u32(0), u32(sizes.length), ...sizes.map((z) => u32(z))));
-    parts.push(full('stco', 0, 0, u32(offsets.length), ...offsets.map((o) => u32(o))));
+    parts.push(full('stsz', 0, 0, u32(0), u32(sizes.length), u32a(sizes)));
+    parts.push(full('stco', 0, 0, u32(offsets.length), u32a(offsets)));
     return box('stbl', ...parts);
   }
 
@@ -153,6 +156,9 @@ export class Mp4Mux {
     const mdatLen = 8 + vs.reduce((a, s) => a + s.data.length, 0) + as.reduce((a, s) => a + s.data.length, 0);
     const mdatHead = new Uint8Array(8);
     mdatHead.set(u32(mdatLen), 0); mdatHead.set(str('mdat'), 4);
-    return new Blob([ftyp, moov, mdatHead, ...vs.map((s) => s.data), ...as.map((s) => s.data)], { type: 'video/mp4' });
+    const blobParts = [ftyp, moov, mdatHead];
+    for (const x of vs) blobParts.push(x.data);
+    for (const x of as) blobParts.push(x.data);
+    return new Blob(blobParts, { type: 'video/mp4' });
   }
 }

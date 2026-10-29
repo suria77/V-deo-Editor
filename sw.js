@@ -1,8 +1,8 @@
 // Lumière · funcionamiento sin conexión.
 // Los archivos propios: primero la red (así siempre tienes la última versión) y, si no hay red o Cloudflare falla, la copia guardada.
 // Tipografías y modelo de subtítulos (otros dominios): se guardan al usarlos la primera vez.
-const CACHE = 'lumiere-v15';
-const CORE = ['./', 'index.html', 'manifest.webmanifest', 'css/style.css?v=25', 'js/main.js?v=25', 'icon-64.png', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'lumiere-v16';
+const CORE = ['./', 'index.html', 'manifest.webmanifest', 'css/style.css?v=26', 'js/main.js?v=26', 'icon-64.png', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 const EXT = /(fonts\.googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net|huggingface\.co|hf\.co|cdn-lfs)/;
 
 self.addEventListener('install', (e) => {
@@ -24,7 +24,7 @@ self.addEventListener('fetch', (e) => {
       if (r && r.ok) { const cp = r.clone(); caches.open(CACHE).then((c) => c.put(req, cp)); }
       return r;
     });
-    const cached = () => caches.match(req, { ignoreSearch: false }).then((m) => m || caches.match(req, { ignoreSearch: true }) || (req.mode === 'navigate' ? caches.match('index.html') : undefined));
+    const cached = () => caches.match(req, { ignoreSearch: false }).then((m) => m || caches.match(req, { ignoreSearch: true })).then((m) => m || (req.mode === 'navigate' ? caches.match('index.html') : undefined));
     e.respondWith(Promise.race([net.catch(() => cached().then((m) => m || Promise.reject())), new Promise((res) => setTimeout(() => cached().then((m) => m ? res(m) : null), 3000))]).catch(() => cached()));
   } else {
     e.respondWith(caches.match(req).then((m) => {

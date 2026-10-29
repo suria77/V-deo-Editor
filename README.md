@@ -66,3 +66,10 @@ Es un sitio estático: no hay que compilar nada. Se publica en Cloudflare Pages 
 - Rendimiento: los clips lejanos del cabezal liberan su decodificador de vídeo, no se resube el mismo fotograma, onda de audio corregida en clips largos, service worker con límite de 3 s.
 - El texto nuevo se ve al añadirlo; Media pasa a llamarse Biblioteca.
 - Audio: ducking automático (marcar la narración como «Es voz» y activar «Bajar cuando hay voz» en la música).
+
+## V16 (segunda tanda de la revisión)
+- La vista previa ya no se congela si un clip tiene datos dañados.
+- Al reabrir no se guarda un proyecto vacío encima del bueno, y los clips cuyo archivo falta se conservan para poder sustituirlos.
+- Atajos de teclado bloqueados mientras se exporta o hay una ventana abierta.
+- Espectro: la caché se invalida al editar. Dividir un clip ya no deja un fundido en el corte. Separar audio conserva los keyframes de volumen.
+- Exportar: soporta vídeos largos (sin límite de pila en el MP4), espera a las tipografías, keyframes a 1/120 s, tiempo 59,96 ya no sale como 0:60.0.

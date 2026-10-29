@@ -74,6 +74,7 @@ export function section(title, icon, open, ...kids) {
 
 export function fmtTime(t, tenths = true) {
   t = Math.max(0, t);
+  if (tenths) t = Math.round(t * 10) / 10;
   const m = Math.floor(t / 60);
   const s = t - m * 60;
   return tenths ? `${m}:${s.toFixed(1).padStart(4, '0')}` : `${m}:${Math.floor(s).toString().padStart(2, '0')}`;

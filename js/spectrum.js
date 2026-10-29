@@ -88,6 +88,7 @@ function magsAt(project, media, t, source) {
 
 // ---------- bandas ----------
 const cache = new Map();
+export const clearSpectrumCache = () => cache.clear();
 function levels(project, media, c, t) {
   const n = Math.max(4, Math.round(c.bars));
   const key = (tt) => `${c.source}|${Math.round(tt * 90)}`;
