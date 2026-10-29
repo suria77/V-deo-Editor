@@ -10,7 +10,7 @@ import { AudioEngine } from './audio.js';
 import { Timeline } from './timeline.js';
 import { Panels } from './panels.js';
 import { startRecorder, pickMime, offlineConfig, exportOffline } from './exporter.js';
-import { saveProject, loadSaved, listProjects, openSavedProject, deleteProject, renameProject, duplicateProject, askPersistent, storageInfo } from './storage.js';
+import { saveProject, loadSaved, listProjects, openSavedProject, deleteProject, renameProject, duplicateProject, libList, libAdd, libGet, libDelete, libRename, askPersistent, storageInfo } from './storage.js';
 import { ASPECTS, loadExtraFonts, PARTICLES, POSTFX } from './presets.js';
 import { SPEC_STYLES } from './spectrum.js';
 import { layerInfo, swapContent, replaceMedia } from './layers.js';
@@ -855,6 +855,65 @@ async function openProjectsList() {
   sh.classList.add('wide');
 }
 
+// ---------- Media: biblioteca de recursos propios ----------
+let libTab = 'video';
+const LIB_TABS = [['video', 'Vídeos', 'video/*'], ['audio', 'Audios', 'audio/*'], ['image', 'Imágenes', 'image/*']];
+async function libImport(files) {
+  toast(`Guardando ${files.length > 1 ? files.length + ' archivos' : 'archivo'}…`, 60000);
+  let ok = 0;
+  for (const f of files) {
+    try {
+      const id = uid('lib');
+      const m = await createMedia(f, id);
+      await libAdd({ id, name: m.name, kind: m.kind, blob: f, w: m.w, h: m.h, duration: m.duration, thumb: m.thumb, added: Date.now(), size: f.size });
+      URL.revokeObjectURL(m.url); state.media.delete(id);
+      libTab = m.kind; ok++;
+    } catch (err) { toast('No se pudo guardar ' + f.name + ': ' + err.message, 5000); }
+  }
+  if (ok) toast(ok === 1 ? 'Guardado en Media' : `${ok} archivos guardados en Media`);
+  openMedia();
+}
+async function libUse(rec, lane) {
+  toast('Añadiendo…', 15000);
+  const r = await libGet(rec.id);
+  if (!r) { toast('No se encontró el archivo'); return; }
+  const mid = rec.id;
+  let m = state.media.get(mid);
+  if (!m) m = await createMedia(new File([r.blob], r.name, { type: r.blob.type }), mid, { name: r.name, thumb: r.thumb });
+  bus.emit('media');
+  addMediaToTimeline(m, false, lane);
+  closeModal();
+}
+async function openMedia() {
+  const all = await libList();
+  const list = all.filter((x) => x.kind === libTab);
+  const seg = h('div', { class: 'lib-tabs' }, ...LIB_TABS.map(([k, n]) => h('button', { class: libTab === k ? 'on' : '', onclick: () => { libTab = k; openMedia(); } }, `${n} (${all.filter((x) => x.kind === k).length})`)));
+  const grid = h('div', { class: 'pj-grid' });
+  if (!list.length) grid.append(h('p', { class: 'hint', style: 'grid-column:1/-1' }, libTab === 'audio' ? 'Aquí guardas los audios que usas a menudo: música, efectos de sonido…' : libTab === 'image' ? 'Aquí guardas imágenes que usas a menudo: logotipos, fondos…' : 'Aquí guardas los vídeos que usas a menudo: pantallas verdes, fondos animados…'));
+  for (const r of list) {
+    const use = () => libUse(r, null);
+    grid.append(h('div', { class: 'pj-card' },
+      h('button', { class: 'pj-cover', onclick: use, style: r.thumb ? `background-image:url(${r.thumb})` : '' },
+        r.thumb ? null : h('span', {}, r.kind === 'audio' ? 'Audio' : 'Sin vista previa'),
+        r.kind !== 'image' && r.duration ? h('em', { class: 'pj-dur' }, fmtTime(r.duration)) : null),
+      h('div', { class: 'pj-info' }, h('b', {}, r.name), h('small', {}, `${(r.size / 1048576).toFixed(1)} MB`)),
+      h('div', { class: 'pj-acts' },
+        h('button', { class: 'btn sm', onclick: use }, 'Usar'),
+        r.kind === 'audio' ? null : h('button', { class: 'btn sm', onclick: () => libUse(r, 'overlay') }, 'Superponer'),
+        h('button', { class: 'btn sm', onclick: () => { const inp = h('input', { type: 'text', value: r.name }); openModal([h('h2', {}, 'Renombrar'), h('div', { class: 'field' }, inp), h('button', { class: 'btn gold block', onclick: async () => { if (inp.value.trim()) await libRename(r.id, inp.value.trim()); openMedia(); } }, 'Aceptar'), h('button', { class: 'btn block ghost', onclick: openMedia }, 'Cancelar')]); } }, 'Renombrar'),
+        h('button', { class: 'btn sm danger', onclick: async () => { if (!confirm(`¿Quitar «${r.name}» de Media? Los proyectos que ya lo usan no se ven afectados.`)) return; await libDelete(r.id); openMedia(); } }, 'Quitar'))));
+  }
+  const fin = h('input', { type: 'file', multiple: true, accept: (LIB_TABS.find((t) => t[0] === libTab) || LIB_TABS[0])[2], style: 'display:none' });
+  fin.onchange = () => { const f = [...fin.files]; if (f.length) libImport(f); };
+  const sh = openModal([
+    h('div', { class: 'pj-head' }, h('div', {}, h('h2', {}, 'Media'), h('p', { class: 'sub' }, 'Tus recursos a mano para cualquier proyecto.')),
+      h('button', { class: 'btn gold', onclick: () => fin.click() }, '+ Añadir'), fin),
+    seg, grid,
+    h('button', { class: 'btn block ghost', onclick: closeModal }, 'Cerrar'),
+  ]);
+  sh.classList.add('wide');
+}
+
 function updateProjChip() {
   $('projName').textContent = state.project.name;
   $('projAspect').textContent = state.project.aspect;
@@ -924,6 +983,7 @@ $('btnUndo').onclick = () => { pause(); undo(); };
 $('btnRedo').onclick = () => { pause(); redo(); };
 $('btnExport').onclick = openExport;
 $('btnProjects').onclick = () => { pause(); openProjectsList(); };
+$('btnMedia').onclick = () => { pause(); openMedia(); };
 $('btnProject').onclick = openProject;
 $('btnHintImport').onclick = pickFiles;
 $('btnFull').onclick = () => {

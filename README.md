@@ -51,3 +51,6 @@ Es un sitio estático: no hay que compilar nada. Se publica en Cloudflare Pages 
 
 ## V13
 - Botón «Proyectos» en la barra superior con galería de proyectos guardados (vista previa, abrir, renombrar, duplicar, borrar, proyecto nuevo) e indicador de guardado automático.
+
+## V14
+- Botón «Media»: biblioteca propia de recursos (Vídeos, Audios, Imágenes) que sirve para cualquier proyecto; Usar, Superponer (pantallas verdes), renombrar y quitar.

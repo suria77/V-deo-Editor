@@ -7,10 +7,10 @@ let dbp = null;
 function open() {
   if (dbp) return dbp;
   dbp = new Promise((res, rej) => {
-    const r = indexedDB.open(DB, 2);
+    const r = indexedDB.open(DB, 3);
     r.onupgradeneeded = () => {
       const db = r.result;
-      for (const n of ['kv', 'media', 'projects']) if (!db.objectStoreNames.contains(n)) db.createObjectStore(n);
+      for (const n of ['kv', 'media', 'projects', 'library']) if (!db.objectStoreNames.contains(n)) db.createObjectStore(n);
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => { dbp = null; rej(r.error); };
@@ -161,4 +161,19 @@ export async function duplicateProject(id) {
   const copy = { ...rec, id: nid, name: pr.name, updated: Date.now(), json: JSON.stringify(pr) };
   await tx('projects', 'readwrite', (s) => s.put(copy, nid));
   return nid;
+}
+
+// ---- Biblioteca de recursos (vídeos, audios e imágenes que se quieren tener a mano en todos los proyectos) ----
+export async function libList() {
+  try {
+    const recs = (await tx('library', 'readonly', (s) => s.getAll())) || [];
+    return recs.map(({ blob, ...meta }) => meta).sort((a, b) => b.added - a.added);
+  } catch (e) { return []; }
+}
+export const libAdd = (rec) => tx('library', 'readwrite', (s) => s.put(rec, rec.id));
+export const libGet = (id) => tx('library', 'readonly', (s) => s.get(id));
+export const libDelete = (id) => tx('library', 'readwrite', (s) => s.delete(id));
+export async function libRename(id, name) {
+  const r = await libGet(id);
+  if (r) { r.name = name; await libAdd(r); }
 }
