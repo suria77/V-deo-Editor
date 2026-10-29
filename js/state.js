@@ -1,6 +1,6 @@
 // Estado del proyecto, historial (deshacer/rehacer) y utilidades de clips.
 import { ADJ_DEFAULT, PARTICLES, POSTFX } from './presets.js';
-import { splitKf } from './kf.js';
+import { splitKf, shiftKf } from './kf.js';
 import { specDefaults } from './spectrum.js';
 
 let _uid = 0;
@@ -180,6 +180,53 @@ export function removeClips(ids) {
   bus.emit('select');
   bus.emit('change', { structural: true });
   commit();
+}
+
+// Quita los clips y desplaza hacia atrás los posteriores de su misma pista para cerrar el hueco
+export function rippleRemove(ids) {
+  const set = new Set(ids);
+  const gone = state.project.clips.filter((c) => set.has(c.id));
+  for (const g of gone) {
+    for (const c of state.project.clips) {
+      if (set.has(c.id) || c.lane !== g.lane || c.start < g.start + g.dur - 0.001) continue;
+      c.start = Math.max(0, c.start - g.dur);
+    }
+  }
+  removeClips(ids);
+}
+
+// Recorta el borde izquierdo (side='l') o derecho ('r') de los clips seleccionados justo en el cabezal t
+export function trimAt(ids, t, side) {
+  let n = 0;
+  for (const id of ids) {
+    const c = getClip(id);
+    if (!c || t <= c.start + 0.05 || t >= c.start + c.dur - 0.05) continue;
+    const cut = t - c.start;
+    if (side === 'l') {
+      if ('in' in c) c.in += cut * (c.speed || 1);
+      if (c.kf) shiftKf(c, cut);
+      c.start = t; c.dur -= cut;
+    } else c.dur = cut;
+    n++;
+  }
+  if (n) { bus.emit('change', { structural: true }); commit(); }
+  return n;
+}
+
+// Separa el audio de un vídeo en un clip de audio independiente (el vídeo queda en silencio)
+export function detachAudio(id, media) {
+  const c = getClip(id);
+  if (!c || c.type !== 'video' || c.muted) return null;
+  const m = media.get(c.media);
+  if (!m) return null;
+  const a = makeAudioClip(m, c.start);
+  a.dur = c.dur; a.in = c.in; a.speed = c.speed || 1; a.volume = c.volume ?? 1; a.afadeIn = c.afadeIn || 0; a.afadeOut = c.afadeOut || 0;
+  c.muted = true;
+  state.project.clips.push(a);
+  selectIds([a.id]);
+  bus.emit('change', { structural: true });
+  commit();
+  return a.id;
 }
 
 // Duplica un grupo conservando las distancias entre clips; la copia va justo después del grupo

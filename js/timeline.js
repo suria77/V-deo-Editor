@@ -184,7 +184,7 @@ export class Timeline {
     g.fillStyle = 'rgba(255,255,255,.55)';
     const per = 40;
     for (let x = 0; x < w; x += 2) {
-      const t = c.in + (x / this.pps) * c.speed;
+      const t = c.in + (x / w) * c.dur * c.speed;
       const p = m.peaks[Math.floor(t * per)] || 0;
       const bh = Math.max(1, p * hgt * 0.9);
       g.fillRect(x, (hgt - bh) / 2, 1.5, bh);

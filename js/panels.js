@@ -1,5 +1,5 @@
 // Barra de herramientas inferior (estilo CapCut/DaVinci) + panel de la herramienta elegida.
-import { state, bus, commit, selectedClip, selectedClips, removeClips, duplicateClips, splitClips, select } from './state.js';
+import { state, bus, commit, selectedClip, selectedClips, removeClips, rippleRemove, trimAt, detachAudio, duplicateClips, splitClips, select } from './state.js';
 import { h, slider, select as selectCtl, toggle, color, chips, section, fmtTime, toast } from './ui.js';
 import {
   ADJ_CONTROLS, ADJ_DEFAULT, FILTERS, MOTIONS, TRANSITIONS, BLENDS, MASKS, FONTS,
@@ -62,12 +62,12 @@ const CLIP_TOOLS = {
     A('pos', 'Posición', 'pos'), A('opac', 'Opacidad', 'opacity'), A('filter', 'Filtros', 'filters'), A('adj', 'Ajustar', 'adjust'),
     A('motion', 'Movimiento', 'motion'), A('xfade', 'Transición', 'trans'), A('trans', 'Entrada/salida', 'anim'), A('mask', 'Máscara', 'mask'), A('key', 'Croma', 'chroma'),
     A('layer', 'Capas', 'swap'), A('replace', 'Sustituir', 'replace', { act: 'replace' }),
-    A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' }), A('all', 'Todo', 'all')],
+    A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('trl', 'Recortar ◀', 'split', { act: 'trl' }), A('trr', 'Recortar ▶', 'split', { act: 'trr' }), A('det', 'Separar audio', 'audio', { act: 'det' }), A('rdel', 'Borrar y cerrar', 'del', { act: 'rdel' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' }), A('all', 'Todo', 'all')],
   text: [A('txt', 'Editar', 'edit'), A('tstyle', 'Estilo', 'style'), A('tpos', 'Posición', 'pos'), A('tanim', 'Animación', 'anim'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }),
     A('split', 'Dividir', 'split', { act: 'split' }), A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' }), A('all', 'Todo', 'all')],
   fx: [A('fxp', 'Ajustes', 'adjust'), A('replace', 'Sustituir', 'replace', { act: 'replace' }), A('kf', 'Keyframes', 'kf', { cls: 'kft' }), A('split', 'Dividir', 'split', { act: 'split' }), A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' })],
   audio: [A('vol', 'Volumen', 'volume'), A('replace', 'Sustituir', 'replace', { act: 'replace' }), A('speed', 'Velocidad', 'speed'), A('kf', 'Keyframes', 'kf', { cls: 'kft' }), A('split', 'Dividir', 'split', { act: 'split' }),
-    A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' })],
+    A('dup', 'Duplicar', 'dup', { act: 'dup' }), A('trl', 'Recortar ◀', 'split', { act: 'trl' }), A('trr', 'Recortar ▶', 'split', { act: 'trr' }), A('rdel', 'Borrar y cerrar', 'del', { act: 'rdel' }), A('del', 'Eliminar', 'del', { act: 'del', cls: 'danger' })],
 };
 CLIP_TOOLS.image = CLIP_TOOLS.video.filter((t) => t.id !== 'speed' && t.id !== 'vol');
 const DEFAULT_SEC = { video: 'pos', image: 'pos', text: 'txt', fx: 'fxp', audio: 'vol' };
@@ -177,6 +177,9 @@ export class Panels {
     const ids = [...state.sel];
     if (t.act === 'split') { if (!splitClips(ids, state.time).length) toast('Coloca el cabezal dentro del clip para dividirlo'); return; }
     if (t.act === 'dup') { duplicateClips(ids); return; }
+    if (t.act === 'trl' || t.act === 'trr') { if (!trimAt(ids, state.time, t.act === 'trl' ? 'l' : 'r')) toast('Coloca el cabezal dentro del clip para recortar'); return; }
+    if (t.act === 'rdel') { rippleRemove(ids); return; }
+    if (t.act === 'det') { const id = detachAudio(ids[0], state.media); toast(id ? 'Audio separado en su propia pista' : 'Este vídeo no tiene audio que separar'); return; }
     if (t.act === 'del') { removeClips(ids); return; }
     if (t.act === 'replace') { const c = selectedClip(); if (c) this.app.replaceClip(c); return; }
     if (this.isOpen() && this.tool === t.id && !this.wideMq.matches) { this.close(); return; }
@@ -516,16 +519,19 @@ export class Panels {
         color('Color a quitar', c.chroma.color, (v) => { c.chroma.color = v; live(); }, done),
         h('button', { class: 'btn block', style: 'margin:6px 0 10px', onclick: () => app.pickColor(c, () => this.render()) }, '🎯 Tocar el color en la imagen'),
         h('div', { class: 'two' },
-          h('button', { class: 'btn', onclick: () => { c.chroma.color = '#00ff00'; live(); done(); this.render(); } }, '🟩 Verde'),
-          h('button', { class: 'btn', onclick: () => { c.chroma.color = '#0047ff'; live(); done(); this.render(); } }, '🟦 Azul')),
+          h('button', { class: 'btn', onclick: () => { c.chroma.color = '#00ff00'; live(); done(); this.render(); } }, 'Verde'),
+          h('button', { class: 'btn', onclick: () => { c.chroma.color = '#0047ff'; live(); done(); this.render(); } }, 'Azul')),
         S('Tolerancia', c.chroma, 'sim', 0, 1, 0.01, pct),
-        S('Suavizado', c.chroma, 'smooth', 0, 1, 0.01, pct)));
+        S('Suavizado', c.chroma, 'smooth', 0, 1, 0.01, pct),
+        S('Quitar reflejo del borde', Object.assign(c.chroma, { spill: c.chroma.spill == null ? 0.6 : c.chroma.spill }), 'spill', 0, 1, 0.01, pct),
+        S('Afinar borde (más cerrado)', Object.assign(c.chroma, { choke: c.chroma.choke || 0 }), 'choke', 0, 1, 0.01, pct)));
 
       if (c.type === 'video') {
         b.append(sec('speed', 'Velocidad', '⏩', speedCtl(0.25, 4), h('p', { class: 'hint' }, 'Doble toque en el control para volver a 1×.')));
         b.append(sec('vol', 'Volumen y sonido', '🔊',
           toggle('Silenciar este clip', c.muted, (v) => { c.muted = v; app.audioChanged(); done(); this.render(); }),
           c.muted ? null : K('volume', 'Volumen', audioChanged),
+          c.muted ? null : toggle('Es voz (narración)', c.role === 'voice', (v) => { c.role = v ? 'voice' : null; app.audioChanged(); done(); this.render(); }),
           c.muted ? null : slider('Fundido de entrada', c.afadeIn, 0, 5, 0.1, (v) => { c.afadeIn = v; }, () => { app.audioChanged(); done(); }, secs),
           c.muted ? null : slider('Fundido de salida', c.afadeOut, 0, 5, 0.1, (v) => { c.afadeOut = v; }, () => { app.audioChanged(); done(); }, secs),
           m && m.audioFallback ? h('p', { class: 'hint' }, 'ℹ️ El navegador no pudo separar el sonido de este vídeo (suele pasar con archivos muy grandes). Sonará directamente al reproducir, pero en iPad el volumen y los fundidos no se aplican y no se incluirá al exportar.') : null,
@@ -627,6 +633,10 @@ export class Panels {
     } else if (c.type === 'audio') {
       b.append(sec('vol', 'Volumen', '🔊',
         K('volume', 'Volumen', audioChanged),
+        toggle('Es voz (narración)', c.role === 'voice', (v) => { c.role = v ? 'voice' : null; app.audioChanged(); done(); this.render(); }),
+        c.role === 'voice' ? null : toggle('Bajar cuando hay voz', !!(c.duck && c.duck.on), (v) => { c.duck = Object.assign({ db: -14 }, c.duck, { on: v }); app.audioChanged(); done(); this.render(); }),
+        c.role !== 'voice' && c.duck && c.duck.on ? slider('Cuánto baja', c.duck.db, -30, -4, 1, (v) => { c.duck.db = v; }, () => { app.audioChanged(); done(); }, (v) => v + ' dB') : null,
+        
         slider('Fundido de entrada', c.afadeIn, 0, 8, 0.1, (v) => { c.afadeIn = v; }, () => { app.audioChanged(); done(); }, secs),
         slider('Fundido de salida', c.afadeOut, 0, 8, 0.1, (v) => { c.afadeOut = v; }, () => { app.audioChanged(); done(); }, secs),
         ...timing,

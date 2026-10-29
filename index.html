@@ -15,14 +15,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Caveat:wght@400;700&family=Cinzel:wght@400;700;900&family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400&family=Dancing+Script:wght@400;700&family=Figtree:wght@400;600;700;900&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Montserrat:ital,wght@0,400;0,700;0,900;1,700&family=Pacifico&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,700&family=Poppins:wght@400;700;900&family=Sora:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="css/style.css?v=24">
+<link rel="stylesheet" href="css/style.css?v=25">
 </head>
 <body>
 <div id="app" class="panel-open">
   <header class="top">
-    <div class="brand" title="Lumière · versión 14"><img class="logo" src="icon-64.png" alt=""><b class="brand-txt">Lumière</b><small class="ver">V14</small></div>
+    <div class="brand" title="Lumière · versión 15"><img class="logo" src="icon-64.png" alt=""><b class="brand-txt">Lumière</b><small class="ver">V15</small></div>
     <button class="chip" id="btnProjects" title="Mis proyectos guardados"><span class="save-dot ok" id="saveDot"></span>Proyectos</button>
-    <button class="chip" id="btnMedia" title="Mi biblioteca de vídeos, audios e imágenes">Media</button>
+    <button class="chip" id="btnMedia" title="Mi biblioteca de vídeos, audios e imágenes">Biblioteca</button>
     <button class="chip proj-btn" id="btnProject" title="Proyecto y formato"><span id="projName">Mi vídeo</span><em id="projAspect">9:16</em></button>
     <div class="spacer"></div>
     <button class="icon-btn" id="btnUndo" title="Deshacer" aria-label="Deshacer">↶</button>
@@ -34,7 +34,8 @@
     <section class="stage">
       <div class="canvas-wrap" id="canvasWrap">
         <canvas id="cv"></canvas>
-        <div class="sel-layer" id="selLayer"></div>
+        <div class="safe-layer" id="safeLayer" hidden></div>
+        <div class="sel-layer" id="selLayer"><i class="guide gv" id="guideV" hidden></i><i class="guide gh" id="guideH" hidden></i></div>
         <div class="empty-hint" id="emptyHint">
           <div class="big">✦</div>
           <p>Empieza añadiendo un vídeo, una foto o música</p>
@@ -48,6 +49,7 @@
           <button class="play-btn" id="btnPlay" aria-label="Reproducir">▶</button>
         </div>
         <div class="tr-right">
+          <button class="chip sm-chip" id="btnSafe" title="Guías: zonas seguras de redes sociales">Guías</button>
           <button class="icon-btn flat" id="btnFull" aria-label="Pantalla completa" title="Ver a pantalla completa">⛶</button>
         </div>
       </div>
@@ -100,7 +102,7 @@
 <div id="toast" class="toast" hidden></div>
 <input type="file" id="fileIn" accept="video/*,image/*,audio/*" multiple hidden>
 <div id="hiddenVideos" aria-hidden="true"></div>
-<script type="module" src="js/main.js?v=24"></script>
+<script type="module" src="js/main.js?v=25"></script>
 <script>if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));</script>
 </body>
 </html>

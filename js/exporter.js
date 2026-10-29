@@ -6,7 +6,10 @@ import { Mp4Mux } from './mp4mux.js';
 export async function offlineConfig(w, h, fps, bitrate, wantAudio) {
   if (!window.VideoEncoder || !window.VideoFrame) return null;
   let vcfg = null;
-  for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42e028', 'avc1.640033']) {
+  // nivel H.264 según macrobloques por segundo (1080x1920 a 60 fps o 4K necesitan niveles altos)
+  const mbs = Math.ceil(w / 16) * Math.ceil(h / 16) * fps;
+  const lv = mbs <= 245760 ? '28' : mbs <= 522240 ? '2a' : mbs <= 983040 ? '33' : '34';
+  for (const codec of ['avc1.6400' + lv, 'avc1.4d00' + lv, 'avc1.640033', 'avc1.640034']) {
     const cfg = { codec, width: w, height: h, bitrate, framerate: fps, avc: { format: 'avc' } };
     try { const r = await VideoEncoder.isConfigSupported(cfg); if (r.supported) { vcfg = cfg; break; } } catch (e) { /* */ }
   }

@@ -57,8 +57,20 @@ const getKey = () => { try { return localStorage.getItem(KEY_LS) || ''; } catch 
 const saveKey = (k) => { try { if (k) localStorage.setItem(KEY_LS, k); else localStorage.removeItem(KEY_LS); } catch (e) { /* */ } };
 const yieldUI = () => new Promise((r) => setTimeout(r, 30));
 
+// Glosario: Whisper escribe mal los nombres sánscritos; se corrigen palabra a palabra sin tocar los tiempos
+const GLOSS = ['Shiva', 'Ganesha', 'Lakshmi', 'Hanuman', 'Krishna', 'Durga', 'Kali', 'Rumi', 'Ramana', 'Maharshi', 'Anandamayi', 'Dharma', 'Eterno', 'Dharmaeterno', 'Namasté', 'Mantra', 'Karma', 'Atman', 'Brahman', 'Vishnu', 'Sadhana', 'Moksha'];
+const ALIAS = { chiva: 'Shiva', siva: 'Shiva', shiba: 'Shiva', ganesa: 'Ganesha', ganesha: 'Ganesha', lakshmi: 'Lakshmi', lakshmí: 'Lakshmi', laksmi: 'Lakshmi', lakmi: 'Lakshmi', hanumán: 'Hanuman', hanumam: 'Hanuman', krisna: 'Krishna', crishna: 'Krishna', krishna: 'Krishna', durga: 'Durga', rumi: 'Rumi', rumí: 'Rumi', namaste: 'Namasté', mantra: 'mantra', atmán: 'Atman', átman: 'Atman', anandamayi: 'Anandamayi', ananda: 'Ananda', vishnú: 'Vishnu', vishnu: 'Vishnu' };
+function fixName(t) {
+  const m = t.match(/^([^\p{L}]*)(\p{L}+)([^\p{L}]*)$/u);
+  if (!m) return t;
+  const rep = ALIAS[m[2].toLowerCase()];
+  if (!rep) return t;
+  const keepLower = rep === 'mantra' && m[2][0] === m[2][0].toLowerCase();
+  return m[1] + (keepLower ? 'mantra' : rep) + m[3];
+}
 function cleanWords(out, total) {
   out = out.filter((w) => w.t && !/^[\[(♪*].*[\])♪*]$/.test(w.t));
+  for (const w of out) w.t = fixName(w.t);
   for (let i = 0; i < out.length; i++) {
     const nx = out[i + 1];
     if (out[i].e == null || out[i].e < out[i].s) out[i].e = Math.min(total, out[i].s + 0.4);
@@ -238,8 +250,9 @@ function buildClips(lines, style, position) {
   return made;
 }
 
+const dropSubs = () => { const ids = new Set(subClips().map((c) => c.id)); state.project.clips = state.project.clips.filter((c) => !ids.has(c.id)); };
 export function applyLines(lines, style, position, replace) {
-  if (replace) for (const c of subClips()) removeClip(c.id);
+  if (replace) dropSubs();
   const made = buildClips(lines, style, position);
   for (const c of made) state.project.clips.push(c);
   bus.emit('change', { structural: true });
@@ -311,7 +324,7 @@ export async function openSubtitles(app) {
     openModal([h('h2', {}, '💬 Subtítulos automáticos'), h('p', { class: 'sub' }, 'No he podido leer el sonido de los vídeos que hay en la línea de tiempo. Puede que el vídeo no tenga audio o que esté en un formato que el navegador no sabe abrir. Prueba a exportarlo desde Fotos como MP4 o a grabar la voz con «Grabar voz».'), h('button', { class: 'btn block', onclick: closeModal }, 'Entendido')]);
     return;
   }
-  const cfg = { engine: 'local', model: 'base', lang: 'spanish', style: 'kar', words: 4, pos: 0.55, replace: true };
+  const cfg = { engine: 'local', model: 'base', lang: 'spanish', style: 'kar', words: 4, pos: 0.30, replace: true };
   const chosen = new Set(srcs.map((c) => c.id));
   const exist = subClips().length;
 
@@ -356,7 +369,7 @@ export async function openSubtitles(app) {
   showEngine();
   body.append(h('h4', {}, 'Estilo'), pill(SUB_STYLES.map((s) => [s.id, s.n]), 'style'));
   body.append(h('h4', {}, 'Palabras por línea'), pill([[2, '2'], [3, '3'], [4, '4'], [6, '6']], 'words'));
-  body.append(h('h4', {}, 'Posición'), pill([[0.55, 'Abajo'], [0, 'Centro'], [-0.5, 'Arriba']], 'pos'));
+  body.append(h('h4', {}, 'Posición'), pill([[0.30, 'Abajo (seguro)'], [0.55, 'Muy abajo'], [0, 'Centro'], [-0.5, 'Arriba']], 'pos'));
   if (exist) {
     const cb = h('input', { type: 'checkbox' }); cb.checked = true; cb.onchange = () => (cfg.replace = cb.checked);
     body.append(h('label', { class: 'src-row', style: 'margin-top:10px' }, cb, h('span', {}, `Reemplazar los ${exist} subtítulos que ya hay`)));
@@ -427,7 +440,7 @@ export function openSubEditor(app) {
       h('button', { class: 'btn', onclick: () => { closeModal(); openSubtitles(app); } }, '✨ Crear de nuevo'),
       h('button', { class: 'btn', onclick: () => pickSrt(app, render) }, '📄 Importar .srt'),
       subs.length ? h('button', { class: 'btn', onclick: downloadSrt }, '⬇ Guardar .srt') : '',
-      subs.length ? h('button', { class: 'btn danger', onclick: () => { for (const c of subClips()) removeClip(c.id); commit(); render(); } }, 'Borrar todos') : '',
+      subs.length ? h('button', { class: 'btn danger', onclick: () => { dropSubs(); bus.emit('change', { structural: true }); commit(); render(); } }, 'Borrar todos') : '',
     );
     body.append(acts, h('button', { class: 'btn gold block', style: 'margin-top:12px', onclick: closeModal }, 'Listo'));
     openModal(body);
@@ -448,8 +461,8 @@ function pickSrt(app, after) {
     if (!f) return;
     const items = parseSrt(await f.text());
     if (!items.length) { toast('No he podido leer ese archivo .srt'); return; }
-    for (const c of subClips()) removeClip(c.id);
-    applyLines(srtToLines(items), SUB_STYLES[0], 0.55, false);
+    dropSubs();
+    applyLines(srtToLines(items), SUB_STYLES[0], 0.30, false);
     toast(`${items.length} subtítulos importados ✓`);
     after();
   };

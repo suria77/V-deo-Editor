@@ -1,6 +1,10 @@
 import { gainAt, hasKf } from './kf.js';
 import { extractAacTrack, trimStart } from './audioextract.js';
 // Motor de audio: decodifica el audio de vídeos/audios y programa la reproducción mezclada.
+// limitador de techo: protege de saturaciones sin aplastar la dinámica
+function setLimiter(n) {
+  n.threshold.value = -1.5; n.knee.value = 0; n.ratio.value = 20; n.attack.value = 0.003; n.release.value = 0.1;
+}
 export class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -19,7 +23,7 @@ export class AudioEngine {
     this.ctx = new AC();
     this.master = this.ctx.createGain();
     this.comp = this.ctx.createDynamicsCompressor();
-    this.comp.threshold.value = -6; this.comp.ratio.value = 6; this.comp.knee.value = 12;
+    setLimiter(this.comp);
     this.master.connect(this.comp);
     this.comp.connect(this.ctx.destination);
     this.exportDest = this.ctx.createMediaStreamDestination();
@@ -105,10 +109,28 @@ export class AudioEngine {
     const ctx = new OAC(2, len, sr);
     const master = ctx.createGain();
     const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -6; comp.ratio.value = 6; comp.knee.value = 12;
+    setLimiter(comp);
     master.connect(comp); comp.connect(ctx.destination);
     this._scheduleOn(ctx, master, project, media, 0, 0);
     return await ctx.startRendering();
+  }
+
+  // ¿hay voz en el instante T del proyecto? (clips marcados como «voz»; mira 0,25 s hacia delante para bajar la música a tiempo)
+  voiceAt(project, media, T) {
+    let a = 0;
+    for (const v of project.clips) {
+      if (v.role !== 'voice' || (v.type !== 'audio' && !(v.type === 'video' && !v.muted))) continue;
+      const lt = T - v.start;
+      if (lt < -0.3 || lt > v.dur) continue;
+      const m = media.get(v.media);
+      if (!m || !m.peaks) continue;
+      const t0 = v.in + Math.max(0, lt) * v.speed;
+      const i0 = Math.floor(t0 * 40), i1 = Math.floor((t0 + 0.25 * v.speed) * 40);
+      let mx = 0;
+      for (let i = i0; i <= i1; i++) { const p = m.peaks[i] || 0; if (p > mx) mx = p; }
+      a = Math.max(a, mx * Math.min(1, gainAt(v, Math.max(0, Math.min(v.dur, lt))) + 0.0001));
+    }
+    return a;
   }
 
   _scheduleOn(ctx, dest, project, media, fromTime, base, list) {
@@ -126,13 +148,32 @@ export class AudioEngine {
       src.buffer = m.buffer;
       src.playbackRate.value = c.speed;
       const gain = ctx.createGain();
-      if (hasKf(c, 'volume') || c.afadeIn > 0 || c.afadeOut > 0) {
+      // micro-fundidos de 8 ms al empezar y acabar: evitan los chasquidos en cada corte
+      const ramp = Math.min(0.008, D / 4);
+      const duck = !!(c.duck && c.duck.on && c.role !== 'voice');
+      const dbG = duck ? Math.pow(10, (c.duck.db == null ? -14 : c.duck.db) / 20) : 1;
+      let dg = 1;
+      const duckStep = (lt, dt) => {
+        // la música baja rápido (0,12 s) cuando entra la voz y sube despacio (0,5 s) cuando se calla
+        const tgt = this.voiceAt(project, media, c.start + lt) > 0.05 ? dbG : 1;
+        dg += (tgt - dg) * (1 - Math.exp(-dt / (tgt < dg ? 0.12 : 0.5)));
+        return dg;
+      };
+      if (duck) dg = this.voiceAt(project, media, c.start + off) > 0.05 ? dbG : 1;
+      if (hasKf(c, 'volume') || c.afadeIn > 0 || c.afadeOut > 0 || duck) {
         // curva de volumen (keyframes + fundidos) muestreada a 25 por segundo
         const step = 0.04;
-        gain.gain.setValueAtTime(gainAt(c, off), when);
-        for (let lt = off + step; lt < c.dur; lt += step) gain.gain.linearRampToValueAtTime(gainAt(c, lt), when + (lt - off));
-        gain.gain.linearRampToValueAtTime(gainAt(c, c.dur), when + D);
-      } else gain.gain.setValueAtTime(c.volume, when);
+        gain.gain.setValueAtTime(0, when);
+        gain.gain.linearRampToValueAtTime(gainAt(c, off) * dg, when + ramp);
+        for (let lt = off + step; lt < c.dur - ramp; lt += step) gain.gain.linearRampToValueAtTime(gainAt(c, lt) * (duck ? duckStep(lt, step) : 1), when + (lt - off));
+        gain.gain.linearRampToValueAtTime(gainAt(c, c.dur - ramp) * dg, when + D - ramp);
+        gain.gain.linearRampToValueAtTime(0, when + D);
+      } else {
+        gain.gain.setValueAtTime(0, when);
+        gain.gain.linearRampToValueAtTime(c.volume, when + ramp);
+        gain.gain.setValueAtTime(c.volume, when + D - ramp);
+        gain.gain.linearRampToValueAtTime(0, when + D);
+      }
       src.connect(gain); gain.connect(dest);
       src.start(when, srcOff, Math.min(D * c.speed, m.buffer.duration - srcOff));
       if (list) list.push({ src, gain });

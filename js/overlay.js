@@ -1290,10 +1290,14 @@ export function drawText(ctx, c, lt, W, H) {
     const lw = ctx.measureText(line).width + sp * Math.max(0, line.length - 1);
     maxLW = Math.max(maxLW, lw);
     const startX = c.align === 'left' ? -c.width * W / 2 : c.align === 'right' ? c.width * W / 2 - lw : -lw / 2;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === ' ') { wk++; continue; }
-      glyphs.push({ wi: wordBase + wk, ch, x: startX + ctx.measureText(line.slice(0, i)).width + i * sp, w: ctx.measureText(ch).width, y: (li - (lines.length - 1) / 2) * lh });
+    // por grafemas (emoji, acentos combinantes del sánscrito IAST…); el devanagari se dibuja entero para no romper las conjunciones
+    const parts = graphemes(line);
+    let acc = '';
+    for (let i = 0; i < parts.length; i++) {
+      const ch = parts[i];
+      if (ch === ' ') { wk++; acc += ch; continue; }
+      glyphs.push({ wi: wordBase + wk, ch, x: startX + ctx.measureText(acc).width + i * sp, w: ctx.measureText(ch).width, y: (li - (lines.length - 1) / 2) * lh });
+      acc += ch;
     }
     if (line.trim()) wordBase += wk + 1;
   });
@@ -1545,7 +1549,7 @@ function texto1(ctx, sc, p, b, flareK) {
 const txTmp = { cv: null };
 function tintedCopy(src, r, rgb, a) {
   if (!txTmp.cv) txTmp.cv = document.createElement('canvas');
-  const T = txTmp.cv; T.width = r.w; T.height = r.h;
+  const T = txTmp.cv; if (T.width !== r.w) T.width = r.w; if (T.height !== r.h) T.height = r.h;
   const g = T.getContext('2d');
   g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, r.w, r.h);
   g.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
@@ -1699,6 +1703,12 @@ function textoFx(ctx, sc, p, b, kind, K, id) {
   ctx.restore();
 }
 
+const SEG = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+function graphemes(line) {
+  if (/[\u0900-\u097F]/.test(line)) return line.split(/(\s)/).filter((x) => x !== '').flatMap((w) => (/\s/.test(w) ? [' '] : [w]));
+  if (SEG) return [...SEG.segment(line)].map((x) => x.segment);
+  return [...line];
+}
 const scratch = { cv: null, ctx: null };
 function scratchFor(w, h) {
   if (!scratch.cv) { scratch.cv = document.createElement('canvas'); scratch.ctx = scratch.cv.getContext('2d'); }

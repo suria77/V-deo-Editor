@@ -25,7 +25,7 @@ uniform sampler2D uTex;
 uniform float uOpacity; uniform vec4 uCrop; uniform vec2 uFlip;
 uniform int uMask; uniform float uMaskSize; uniform float uMaskFeather; uniform float uAspect;
 uniform float uLod; uniform vec3 uWipe; uniform float uFlash; uniform float uDim;
-uniform int uKeyOn; uniform vec3 uKey; uniform vec2 uKeyP;
+uniform int uKeyOn; uniform vec3 uKey; uniform vec2 uKeyP; uniform vec2 uKeyQ;
 uniform vec4 uA1; uniform vec4 uA2; uniform vec4 uA3; uniform float uTime; uniform vec2 uRes;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
 vec3 rgb2yuv(vec3 c){ return vec3(dot(c, vec3(.299,.587,.114)), dot(c, vec3(-.14713,-.28886,.436)), dot(c, vec3(.615,-.51499,-.10001))); }
@@ -89,11 +89,18 @@ void main(){
     // diferencia de tono (ángulo de crominancia) + falta de saturación respecto a la clave
     float ang = lc < 0.015 ? 1.0 : 1. - dot(yc.yz / lc, yk.yz / lk);
     float d = ang * 2.2 + max(0., 0.4 - lc / lk) * 1.2;
-    float a2 = smoothstep(uKeyP.x, uKeyP.x + uKeyP.y + 0.001, d);
+    float k0 = uKeyP.x + uKeyQ.y * 0.3;
+    float a2 = smoothstep(k0, k0 + uKeyP.y + 0.001, d);
     alpha *= a2;
     // quitar el reflejo de color en los bordes
     float lum = dot(c, vec3(.299,.587,.114));
     c = mix(mix(vec3(lum), c, 0.35), c, smoothstep(0., 1., a2));
+    // despill: resta del color la parte que apunta hacia la clave (adiós al borde verdoso)
+    vec3 yd = rgb2yuv(c);
+    vec2 kd = yk.yz / lk;
+    float along = max(0., dot(yd.yz, kd));
+    yd.yz -= kd * along * uKeyQ.x * a2;
+    c = vec3(yd.x + 1.13983 * yd.z, yd.x - 0.39465 * yd.y - 0.58060 * yd.z, yd.x + 2.03211 * yd.y);
   }
   // sharpen
   if (uA3.w > 0.001 && uLod < 0.01) {
@@ -445,7 +452,13 @@ export class Renderer {
       e.dirtyMip = true;
     };
     if (c.type === 'video') {
-      if (videoEl && videoEl.readyState >= 2 && videoEl.videoWidth) upload(videoEl);
+      if (videoEl && videoEl.readyState >= 2 && videoEl.videoWidth) {
+        // no se vuelve a subir el mismo fotograma (en iPad de 120 Hz se subía 4 veces cada fotograma 4K)
+        if (!(e.has && e.vel === videoEl && !videoEl.seeking && e.ct === videoEl.currentTime)) {
+          upload(videoEl);
+          e.vel = videoEl; e.ct = videoEl.seeking ? -1 : videoEl.currentTime;
+        }
+      }
     } else if (!e.has && m.el && (m.el.complete !== false)) {
       upload(m.el);
     }
@@ -533,6 +546,7 @@ export class Renderer {
       const kc = hexToRgb(ck.color);
       gl.uniform3f(this.U(P, 'uKey'), kc[0], kc[1], kc[2]);
       gl.uniform2f(this.U(P, 'uKeyP'), ck.sim * 0.6, ck.smooth * 0.6);
+      gl.uniform2f(this.U(P, 'uKeyQ'), ck.spill == null ? 0.6 : ck.spill, ck.choke || 0);
       const a = o.noAdj ? ADJ_DEFAULT : adj;
       gl.uniform4f(this.U(P, 'uA1'), a.exposure, a.brightness, a.contrast, a.saturation);
       gl.uniform4f(this.U(P, 'uA2'), a.temperature, a.tint, a.hue, a.vignette);

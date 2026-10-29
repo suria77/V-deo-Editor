@@ -78,6 +78,14 @@ function videoFor(c) {
   videoEls.set(c.id, v);
   return v;
 }
+// Libera el decodificador de los clips lejanos al cabezal (Safari limita cuántos vídeos puede tener abiertos a la vez)
+const VID_WINDOW = 3;
+function farFrom(c, t) { return (t < c.start ? c.start - t : t > c.start + c.dur ? t - (c.start + c.dur) : 0) > VID_WINDOW; }
+function releaseVideo(id) {
+  const v = videoEls.get(id);
+  if (!v) return;
+  v.pause(); v.removeAttribute('src'); v.load(); v.remove(); videoEls.delete(id); renderer.releaseClip(id);
+}
 function cleanupVideos() {
   for (const [id, v] of videoEls) {
     if (!getClip(id)) { v.pause(); v.removeAttribute('src'); v.load(); v.remove(); videoEls.delete(id); renderer.releaseClip(id); }
@@ -99,6 +107,7 @@ function syncVideos(t) {
   const xf = xfadeAt(state.project, t);
   for (const c of state.project.clips) {
     if (c.type !== 'video') continue;
+    if (farFrom(c, t) && !xf.has(c.id)) { releaseVideo(c.id); continue; }
     const v = videoFor(c);
     if (!v) continue;
     const inClip = t >= c.start && t < c.start + c.dur;
@@ -322,6 +331,8 @@ function addText(preset) {
   if (upper) c.upper = true;
   addClip(c);
   select(c.id);
+  // la animación de entrada empieza en transparente: se coloca el cabezal justo después para que el texto se vea al añadirlo
+  if (!state.playing && c.inAnim && c.inAnim.type !== 'none') seek(c.start + Math.min(c.dur * 0.5, (c.inAnim.dur || 0) + 0.05));
   updateEmpty();
   dirty = true;
 }
@@ -404,7 +415,7 @@ async function recordVoice() {
     const file = new File([blob], `Voz ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}.${type.includes('mp4') ? 'm4a' : 'webm'}`, { type });
     try {
       const m = await createMedia(file);
-      const c = makeAudioClip(m, startAt);
+      const c = makeAudioClip(m, startAt); c.role = 'voice';
       addClip(c);
       select(c.id);
       bus.emit('media');
@@ -576,7 +587,14 @@ stageWrap.addEventListener('pointermove', (e) => {
     g.moved = true;
     for (const it of g.items) {
       const m = it.k.type === 'text' || it.sp ? 2 : 1;
-      setValue(it.k, it.P[0], it.lt, it.x0 + dx * m); setValue(it.k, it.P[1], it.lt, it.y0 + dy * m);
+      let nx = it.x0 + dx * m, ny = it.y0 + dy * m;
+      if (g.items.length === 1) {
+        // imán al centro de la pantalla, con líneas guía
+        const sx = Math.abs(nx) < 0.025, sy = Math.abs(ny) < 0.025;
+        if (sx) nx = 0; if (sy) ny = 0;
+        $('guideV').hidden = !sx; $('guideH').hidden = !sy;
+      }
+      setValue(it.k, it.P[0], it.lt, nx); setValue(it.k, it.P[1], it.lt, ny);
     }
   }
   dirty = true;
@@ -586,6 +604,7 @@ const endPtr = (e) => {
   pointers.delete(e.pointerId);
   if (pointers.size === 0 && gesture) {
     gesture = null;
+    $('guideV').hidden = true; $('guideH').hidden = true;
     commit();
     bus.emit('change', { timing: true });
   } else if (gesture) { gesture.d0 = null; const p = [...pointers.values()][0]; if (p) { gesture.p0 = p; gesture.items = gesture.snapItems(); } }
@@ -605,23 +624,30 @@ function exportDims(q) {
 function openExport() {
   const dur = projectDuration();
   if (dur <= 0) { toast('El proyecto está vacío'); return; }
-  if (!pickMime() || !canvas.captureStream) {
+  if ((!pickMime() || !canvas.captureStream) && !window.VideoEncoder) {
     openModal([h('h2', {}, 'No disponible'), h('p', { class: 'sub' }, 'Este navegador no permite grabar vídeo. Actualiza iPadOS/Safari o usa Chrome en el ordenador.'), h('button', { class: 'btn block', onclick: closeModal }, 'Cerrar')]);
     return;
   }
-  let q = 1080;
-  const opt = (val, title, sub) => {
-    const b = h('button', { class: 'card' + (q === val ? ' on' : ''), style: 'min-height:90px' }, h('b', { style: 'font-size:18px' }, title), h('small', {}, sub));
-    b.onclick = () => { q = val; [...b.parentNode.children].forEach((x) => x.classList.remove('on')); b.classList.add('on'); };
+  const PRESETS = [
+    { id: 'reel', n: 'Reel / TikTok / Short', q: 1080, fps: 30, br: 14e6, sub: 'Calidad alta · recomendado' },
+    { id: 'yt', n: 'YouTube 1080p', q: 1080, fps: 30, br: 16e6, sub: 'Máxima calidad en Full HD' },
+    { id: 'yt4k', n: 'YouTube 4K', q: 2160, fps: 30, br: 40e6, sub: 'Pesado: úsalo en vídeos cortos' },
+    { id: 'f60', n: '1080p a 60 fps', q: 1080, fps: 60, br: 20e6, sub: 'Movimiento muy fluido' },
+    { id: 'fast', n: 'Rápido 720p', q: 720, fps: 30, br: 7e6, sub: 'Para probar o enviar por chat' },
+  ];
+  let sel = PRESETS[0];
+  const cards = PRESETS.map((p) => {
+    const d = exportDims(p.q);
+    const b = h('button', { class: 'card' + (p === sel ? ' on' : ''), style: 'min-height:74px;align-items:flex-start;text-align:left' }, h('b', { style: 'font-size:16px' }, p.n), h('small', {}, `${d.w}×${d.h} · ${p.fps} fps · ${p.sub}`));
+    b.onclick = () => { sel = p; cards.forEach((x) => x.classList.remove('on')); b.classList.add('on'); };
     return b;
-  };
-  const d1 = exportDims(720), d2 = exportDims(1080);
+  });
   openModal([
-    h('h2', {}, '⬇ Exportar vídeo'),
+    h('h2', {}, 'Exportar vídeo'),
     h('p', { class: 'sub' }, `Duración: ${fmtTime(dur)} · Formato ${state.project.aspect}. Deja esta pantalla abierta y sin bloquear mientras se crea el vídeo.`),
-    h('div', { class: 'grid', style: 'grid-template-columns:1fr 1fr' }, opt(720, '720p', `${d1.w}×${d1.h} · más rápido`), opt(1080, '1080p', `${d2.w}×${d2.h} · recomendado`)),
+    h('div', { style: 'display:flex;flex-direction:column;gap:8px' }, ...cards),
     h('div', { style: 'height:16px' }),
-    h('div', { class: 'row-btns' }, h('button', { class: 'btn', onclick: closeModal }, 'Cancelar'), h('button', { class: 'btn gold', onclick: () => runExport(q) }, 'Empezar')),
+    h('div', { class: 'row-btns' }, h('button', { class: 'btn', onclick: closeModal }, 'Cancelar'), h('button', { class: 'btn gold', onclick: () => runExport(sel.q, sel) }, 'Empezar')),
   ]);
 }
 
@@ -642,6 +668,7 @@ async function prepareFrame(t) {
   const xf = xfadeAt(state.project, t);
   for (const c of state.project.clips) {
     if (c.type !== 'video') continue;
+    if (farFrom(c, t) && !xf.has(c.id)) { releaseVideo(c.id); continue; }
     const v = videoFor(c);
     if (!v) continue;
     if (!v.paused) v.pause();
@@ -656,13 +683,13 @@ async function prepareFrame(t) {
 
 let offlineBusy = false;
 
-async function runExport(q) {
+async function runExport(q, preset = { fps: 30, br: q >= 1080 ? 12e6 : 7e6 }) {
   pause();
   select(null);
   const dur = projectDuration();
   const d = exportDims(q);
-  const fps = 30;
-  const bitrate = q >= 1080 ? 12_000_000 : 7_000_000;
+  const fps = preset.fps || 30;
+  const bitrate = preset.br || 12e6;
   const bar = h('i');
   const pctEl = h('b', {}, '0%');
   const modeEl = h('p', { class: 'hint' }, 'Preparando…');
@@ -717,7 +744,7 @@ async function runExport(q) {
   await new Promise((r) => setTimeout(r, 600));
   let rec;
   try {
-    rec = startRecorder(canvas, audio.exportDest && audio.exportDest.stream, { bitrate: q >= 1080 ? 12_000_000 : 7_000_000, fps: 30 });
+    rec = startRecorder(canvas, audio.exportDest && audio.exportDest.stream, { bitrate: Math.min(bitrate, 12e6), fps: 30 });
   } catch (e) {
     closeModal(); applyPreviewSize(); toast(e.message, 5000); return;
   }
@@ -870,7 +897,7 @@ async function libImport(files) {
       libTab = m.kind; ok++;
     } catch (err) { toast('No se pudo guardar ' + f.name + ': ' + err.message, 5000); }
   }
-  if (ok) toast(ok === 1 ? 'Guardado en Media' : `${ok} archivos guardados en Media`);
+  if (ok) toast(ok === 1 ? 'Guardado en la biblioteca' : `${ok} archivos guardados en la biblioteca`);
   openMedia();
 }
 async function libUse(rec, lane) {
@@ -901,12 +928,12 @@ async function openMedia() {
         h('button', { class: 'btn sm', onclick: use }, 'Usar'),
         r.kind === 'audio' ? null : h('button', { class: 'btn sm', onclick: () => libUse(r, 'overlay') }, 'Superponer'),
         h('button', { class: 'btn sm', onclick: () => { const inp = h('input', { type: 'text', value: r.name }); openModal([h('h2', {}, 'Renombrar'), h('div', { class: 'field' }, inp), h('button', { class: 'btn gold block', onclick: async () => { if (inp.value.trim()) await libRename(r.id, inp.value.trim()); openMedia(); } }, 'Aceptar'), h('button', { class: 'btn block ghost', onclick: openMedia }, 'Cancelar')]); } }, 'Renombrar'),
-        h('button', { class: 'btn sm danger', onclick: async () => { if (!confirm(`¿Quitar «${r.name}» de Media? Los proyectos que ya lo usan no se ven afectados.`)) return; await libDelete(r.id); openMedia(); } }, 'Quitar'))));
+        h('button', { class: 'btn sm danger', onclick: async () => { if (!confirm(`¿Quitar «${r.name}» de la biblioteca? Los proyectos que ya lo usan no se ven afectados.`)) return; await libDelete(r.id); openMedia(); } }, 'Quitar'))));
   }
   const fin = h('input', { type: 'file', multiple: true, accept: (LIB_TABS.find((t) => t[0] === libTab) || LIB_TABS[0])[2], style: 'display:none' });
   fin.onchange = () => { const f = [...fin.files]; if (f.length) libImport(f); };
   const sh = openModal([
-    h('div', { class: 'pj-head' }, h('div', {}, h('h2', {}, 'Media'), h('p', { class: 'sub' }, 'Tus recursos a mano para cualquier proyecto.')),
+    h('div', { class: 'pj-head' }, h('div', {}, h('h2', {}, 'Biblioteca'), h('p', { class: 'sub' }, 'Tus recursos a mano para cualquier proyecto.')),
       h('button', { class: 'btn gold', onclick: () => fin.click() }, '+ Añadir'), fin),
     seg, grid,
     h('button', { class: 'btn block ghost', onclick: closeModal }, 'Cerrar'),
@@ -991,6 +1018,30 @@ $('btnFull').onclick = () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
   else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+};
+// guías de zonas seguras (no se exportan)
+const SAFE = [
+  { n: 'Guías', t: 0, b: 0, l: 0, r: 0 },
+  { n: 'Instagram', t: 0.14, b: 0.25, l: 0.06, r: 0.06, side: 0.14 },
+  { n: 'TikTok', t: 0.10, b: 0.25, l: 0.05, r: 0.05, side: 0.17 },
+  { n: 'Shorts', t: 0.08, b: 0.20, l: 0.05, r: 0.14 },
+];
+let safeMode = -1;
+$('btnSafe').onclick = () => {
+  safeMode = (safeMode + 2) % (SAFE.length + 1) - 1;
+  const el = $('safeLayer');
+  if (safeMode < 0) { el.hidden = true; $('btnSafe').textContent = 'Guías'; return; }
+  const z = SAFE[safeMode];
+  el.hidden = false;
+  el.innerHTML = '';
+  el.append(h('i', { class: 'sz-v' }), h('i', { class: 'sz-h' }));
+  if (z.t || z.b) {
+    const box = h('i', { class: 'sz-box', style: `top:${z.t * 100}%;bottom:${z.b * 100}%;left:${z.l * 100}%;right:${z.r * 100}%` });
+    el.append(box);
+    if (z.side) el.append(h('i', { class: 'sz-side', style: `top:${z.t * 100 + 30}%;bottom:${z.b * 100}%;right:0;width:${z.side * 100}%` }));
+  }
+  $('btnSafe').textContent = z.n;
+  toast(z.t ? `Zona segura de ${z.n}: mantén texto e imágenes importantes dentro del recuadro` : 'Guías de centro activadas', 2800);
 };
 function targetIds() { return [...state.sel]; }
 $('tSplit').onclick = () => {

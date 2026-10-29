@@ -54,3 +54,15 @@ Es un sitio estático: no hay que compilar nada. Se publica en Cloudflare Pages 
 
 ## V14
 - Botón «Media»: biblioteca propia de recursos (Vídeos, Audios, Imágenes) que sirve para cualquier proyecto; Usar, Superponer (pantallas verdes), renombrar y quitar.
+
+## V15 (revisión adversarial)
+- Audio: micro-fundidos anti-chasquido en cada corte y limitador de techo en lugar del compresor fijo.
+- Exportar: presets (Reel, YouTube 1080, 4K, 60 fps, 720p) con nivel H.264 calculado; ya no se bloquea si falta MediaRecorder.
+- Guías de zonas seguras (Instagram, TikTok, Shorts) e imán al centro al arrastrar; subtítulos por defecto fuera de la zona de la interfaz.
+- Texto: emoji, acentos del sánscrito (IAST) y devanagari ya no se rompen.
+- Edición: Recortar ◀ ▶ al cabezal, Separar audio, Borrar y cerrar hueco.
+- Croma: quitar reflejo del borde y afinar borde.
+- Subtítulos: glosario de nombres (Shiva, Ganesha, Lakshmi…), borrado en bloque, ajuste de posición.
+- Rendimiento: los clips lejanos del cabezal liberan su decodificador de vídeo, no se resube el mismo fotograma, onda de audio corregida en clips largos, service worker con límite de 3 s.
+- El texto nuevo se ve al añadirlo; Media pasa a llamarse Biblioteca.
+- Audio: ducking automático (marcar la narración como «Es voz» y activar «Bajar cuando hay voz» en la música).
