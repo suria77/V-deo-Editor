@@ -142,3 +142,23 @@ export async function deleteProject(id, mediaMap) {
     await cleanupMedia(mediaMap);
   } catch (e) { /* nada */ }
 }
+
+export async function renameProject(id, name) {
+  const rec = await tx('projects', 'readonly', (s) => s.get(id));
+  if (!rec) return false;
+  const pr = JSON.parse(rec.json); pr.name = name;
+  rec.name = name; rec.json = JSON.stringify(pr); rec.updated = Date.now();
+  await tx('projects', 'readwrite', (s) => s.put(rec, id));
+  return true;
+}
+
+// Copia un proyecto guardado (comparte los mismos archivos de medios)
+export async function duplicateProject(id) {
+  const rec = await tx('projects', 'readonly', (s) => s.get(id));
+  if (!rec) return null;
+  const nid = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const pr = JSON.parse(rec.json); pr.id = nid; pr.name = (rec.name || 'Mi vídeo') + ' (copia)';
+  const copy = { ...rec, id: nid, name: pr.name, updated: Date.now(), json: JSON.stringify(pr) };
+  await tx('projects', 'readwrite', (s) => s.put(copy, nid));
+  return nid;
+}

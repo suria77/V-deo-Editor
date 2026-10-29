@@ -48,3 +48,6 @@ Es un sitio estático: no hay que compilar nada. Se publica en Cloudflare Pages 
 - Texto 10 y Texto 11 (nuevas apariciones de texto).
 - Toque con 2 dedos = deshacer, con 3 dedos = rehacer.
 - Todos los efectos (luces, imagen, filtros, transiciones, animaciones) sin iconos y con botones más compactos.
+
+## V13
+- Botón «Proyectos» en la barra superior con galería de proyectos guardados (vista previa, abrir, renombrar, duplicar, borrar, proyecto nuevo) e indicador de guardado automático.

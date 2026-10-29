@@ -10,7 +10,7 @@ import { AudioEngine } from './audio.js';
 import { Timeline } from './timeline.js';
 import { Panels } from './panels.js';
 import { startRecorder, pickMime, offlineConfig, exportOffline } from './exporter.js';
-import { saveProject, loadSaved, listProjects, openSavedProject, deleteProject, askPersistent, storageInfo } from './storage.js';
+import { saveProject, loadSaved, listProjects, openSavedProject, deleteProject, renameProject, duplicateProject, askPersistent, storageInfo } from './storage.js';
 import { ASPECTS, loadExtraFonts, PARTICLES, POSTFX } from './presets.js';
 import { SPEC_STYLES } from './spectrum.js';
 import { layerInfo, swapContent, replaceMedia } from './layers.js';
@@ -770,8 +770,8 @@ function openProject() {
     h('div', { style: 'height:16px' }),
     h('button', { class: 'btn gold block', onclick: () => { state.project.name = name.value.trim() || 'Mi vídeo'; commit(); updateProjChip(); closeModal(); } }, 'Guardar'),
     h('div', { style: 'height:10px' }),
-    h('button', { class: 'btn block', onclick: newProject }, '✦ Proyecto nuevo (este se queda guardado)'),
-    h('button', { class: 'btn block ghost', onclick: openProjectsList }, '📁 Mis proyectos guardados'),
+    h('button', { class: 'btn block', onclick: newProject }, 'Proyecto nuevo (este se queda guardado)'),
+    h('button', { class: 'btn block ghost', onclick: openProjectsList }, 'Mis proyectos guardados'),
   ]);
 }
 
@@ -809,28 +809,50 @@ async function newProject() {
 
 const fmtDate = (t) => new Date(t).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 async function openProjectsList() {
+  await flushSave();
   const list = await listProjects();
   const info = await storageInfo();
-  const box = h('div', { style: 'display:flex;flex-direction:column;gap:10px;margin:10px 0 14px' });
-  if (!list.length) box.append(h('p', { class: 'hint' }, 'Todavía no hay proyectos guardados.'));
+  const grid = h('div', { class: 'pj-grid' });
+  if (!list.length) grid.append(h('p', { class: 'hint' }, 'Todavía no hay proyectos guardados.'));
+  const ask = (title, value, ok) => {
+    const inp = h('input', { type: 'text', value });
+    openModal([h('h2', {}, title), h('div', { class: 'field' }, inp),
+      h('button', { class: 'btn gold block', onclick: async () => { await ok(inp.value.trim()); } }, 'Aceptar'),
+      h('button', { class: 'btn block ghost', onclick: openProjectsList }, 'Cancelar')]);
+    setTimeout(() => inp.select(), 50);
+  };
   for (const p of list) {
     const cur = p.id === state.project.id;
-    const row = h('div', { class: 'proj-row' + (cur ? ' cur' : '') },
-      h('div', { class: 'pj-th', style: p.thumb ? `background-image:url(${p.thumb})` : '' }, p.thumb ? '' : '🎬'),
-      h('div', { class: 'pj-tx' }, h('b', {}, p.name || 'Sin nombre'),
-        h('small', {}, `${p.aspect} · ${fmtTime(p.dur || 0)} · ${p.count || 0} clips`), h('small', {}, (cur ? 'Abierto ahora · ' : '') + fmtDate(p.updated))),
-      h('button', { class: 'btn', onclick: async () => { if (cur) { closeModal(); return; } toast('Abriendo…', 20000); const d = await openSavedProject(p.id); if (!d) { toast('No se pudo abrir este proyecto'); return; } await switchTo(d); toast('Proyecto abierto ✓'); } }, cur ? 'Seguir' : 'Abrir'),
-      cur ? null : h('button', { class: 'icon-btn sm', title: 'Borrar', onclick: async () => { if (!confirm(`¿Borrar «${p.name}» de este dispositivo?`)) return; await deleteProject(p.id, state.media); openProjectsList(); } }, '🗑'));
-    box.append(row);
+    const ar = p.aspect === '16:9' ? '16/9' : p.aspect === '1:1' ? '1/1' : p.aspect === '4:5' ? '4/5' : '9/16';
+    const open = async () => {
+      if (cur) { closeModal(); return; }
+      toast('Abriendo…', 20000);
+      const d = await openSavedProject(p.id);
+      if (!d) { toast('No se pudo abrir este proyecto'); return; }
+      await switchTo(d); toast('Proyecto abierto');
+    };
+    const card = h('div', { class: 'pj-card' + (cur ? ' cur' : '') },
+      h('button', { class: 'pj-cover', onclick: open, style: p.thumb ? `background-image:url(${p.thumb})` : '' },
+        p.thumb ? null : h('span', {}, 'Sin vista previa'),
+        h('em', { class: 'pj-dur' }, fmtTime(p.dur || 0)),
+        cur ? h('em', { class: 'pj-badge' }, 'Abierto') : null),
+      h('div', { class: 'pj-info' }, h('b', {}, p.name || 'Sin nombre'), h('small', {}, `${p.aspect} · ${p.count || 0} clips · ${fmtDate(p.updated)}`)),
+      h('div', { class: 'pj-acts' },
+        h('button', { class: 'btn sm', onclick: open }, cur ? 'Seguir' : 'Abrir'),
+        h('button', { class: 'btn sm', onclick: () => ask('Renombrar proyecto', p.name || '', async (n) => { if (n) { await renameProject(p.id, n); if (cur) { state.project.name = n; updateProjChip(); } } openProjectsList(); }) }, 'Renombrar'),
+        h('button', { class: 'btn sm', onclick: async () => { await duplicateProject(p.id); openProjectsList(); } }, 'Duplicar'),
+        cur ? null : h('button', { class: 'btn sm danger', onclick: async () => { if (!confirm(`¿Borrar «${p.name}» de este dispositivo?`)) return; await deleteProject(p.id, state.media); openProjectsList(); } }, 'Borrar')));
+    grid.append(card);
   }
-  openModal([
-    h('h2', {}, 'Mis proyectos'),
-    h('p', { class: 'sub' }, 'Se guardan solos en este dispositivo mientras editas, aunque no exportes.'),
-    box,
+  const sh = openModal([
+    h('div', { class: 'pj-head' }, h('div', {}, h('h2', {}, 'Mis proyectos'),
+      h('p', { class: 'sub' }, 'Se guardan solos en este dispositivo mientras editas.')),
+      h('button', { class: 'btn gold', onclick: newProject }, '+ Nuevo proyecto')),
+    grid,
     info && info.quota ? h('p', { class: 'hint' }, `Espacio usado: ${(info.used / 1048576).toFixed(0)} MB de ${(info.quota / 1048576).toFixed(0)} MB`) : null,
-    h('button', { class: 'btn gold block', onclick: newProject }, '✦ Proyecto nuevo'),
     h('button', { class: 'btn block ghost', onclick: closeModal }, 'Cerrar'),
   ].filter(Boolean));
+  sh.classList.add('wide');
 }
 
 function updateProjChip() {
@@ -869,12 +891,14 @@ bus.on('change', (e) => {
 });
 bus.on('time', () => { $('tcNow').textContent = fmtTime(state.time); });
 bus.on('fontloaded', () => (dirty = true));
+const setSaveState = (ok) => { const d = $('saveDot'); if (!d) return; d.className = 'save-dot ' + (ok ? 'ok' : 'pend'); d.title = ok ? 'Guardado' : 'Guardando…'; };
 let saveTimer = null, saving = Promise.resolve(), warnedBig = false;
 function doSave() {
   clearTimeout(saveTimer);
   saveTimer = null;
   saving = saving.then(async () => {
     const r = await saveProject(state.project, state.media);
+    setSaveState(r.ok);
     if (r.failed.length && !warnedBig) {
       warnedBig = true;
       toast('«' + r.failed[0] + '» pesa demasiado para guardarlo en este dispositivo: el proyecto se guarda, pero ese archivo tendrás que volver a importarlo al reabrir.', 9000);
@@ -885,6 +909,7 @@ function doSave() {
 const flushSave = () => doSave();
 bus.on('commit', () => {
   updateUndo();
+  setSaveState(false);
   $('tcTotal').textContent = fmtTime(projectDuration());
   clearTimeout(saveTimer);
   saveTimer = setTimeout(doSave, 700);
@@ -898,6 +923,7 @@ $('btnToStart').onclick = () => seek(0);
 $('btnUndo').onclick = () => { pause(); undo(); };
 $('btnRedo').onclick = () => { pause(); redo(); };
 $('btnExport').onclick = openExport;
+$('btnProjects').onclick = () => { pause(); openProjectsList(); };
 $('btnProject').onclick = openProject;
 $('btnHintImport').onclick = pickFiles;
 $('btnFull').onclick = () => {
