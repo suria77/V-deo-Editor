@@ -73,3 +73,9 @@ Es un sitio estático: no hay que compilar nada. Se publica en Cloudflare Pages 
 - Atajos de teclado bloqueados mientras se exporta o hay una ventana abierta.
 - Espectro: la caché se invalida al editar. Dividir un clip ya no deja un fundido en el corte. Separar audio conserva los keyframes de volumen.
 - Exportar: soporta vídeos largos (sin límite de pila en el MP4), espera a las tipografías, keyframes a 1/120 s, tiempo 59,96 ya no sale como 0:60.0.
+
+## V17
+- Vista previa más grande (iPad horizontal y vertical).
+- Tira de fotogramas en los clips de vídeo de la línea de tiempo.
+- Miniaturas reales en Efectos (Luces/Imagen) y Filtros.
+- La línea de tiempo se desplaza al clip seleccionado.

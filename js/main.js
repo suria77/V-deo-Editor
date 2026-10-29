@@ -255,6 +255,43 @@ function makeThumb(src, w, hgt) {
   try { return c.toDataURL('image/jpeg', 0.7); } catch (e) { return ''; }
 }
 
+// Tira de fotogramas para la línea de tiempo: se genera en segundo plano, de uno en uno, y solo en vídeos no enormes
+const frameQueue = [];
+let frameBusy = false;
+function genFrames(m) {
+  if (m.kind !== 'video' || m.frames || !m.duration || m.duration > 900 || (m.blob && m.blob.size > 600 * 1048576)) return;
+  frameQueue.push(m);
+  if (!frameBusy) runFrameQueue();
+}
+async function runFrameQueue() {
+  frameBusy = true;
+  while (frameQueue.length) {
+    const m = frameQueue.shift();
+    if (!state.media.has(m.id)) continue;
+    try {
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.preload = 'auto'; v.setAttribute('playsinline', '');
+      v.src = m.url;
+      await new Promise((res) => { v.onloadedmetadata = res; v.onerror = res; setTimeout(res, 8000); });
+      const N = Math.min(40, Math.max(2, Math.ceil(m.duration / 1.5)));
+      const step = m.duration / N;
+      const H = 72, W = Math.max(20, Math.round((m.w / m.h) * H));
+      const frames = [];
+      for (let i = 0; i < N; i++) {
+        if (!state.media.has(m.id)) break;
+        await seekVideo(v, Math.min(m.duration - 0.05, i * step + step / 2));
+        const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+        cv.getContext('2d').drawImage(v, 0, 0, W, H);
+        frames.push(cv);
+      }
+      v.removeAttribute('src'); v.load();
+      if (frames.length === N) { m.frames = frames; m.fstep = step; bus.emit('frames'); }
+    } catch (e) { /* sin tira de fotogramas: se usa la miniatura */ }
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  frameBusy = false;
+}
+
 async function createMedia(file, id = uid('m'), opts = {}) {
   const kind = file.type.startsWith('video') ? 'video' : file.type.startsWith('image') ? 'image' : file.type.startsWith('audio') ? 'audio' : (/\.(mp4|mov|m4v|webm)$/i.test(file.name || '') ? 'video' : /\.(mp3|wav|m4a|aac|ogg)$/i.test(file.name || '') ? 'audio' : 'image');
   const m = { id, name: opts.name || file.name || 'Medio', kind, blob: file, url: URL.createObjectURL(file), w: 0, h: 0, duration: 0, el: null, buffer: null, thumb: opts.thumb || '', saved: !!opts.saved };
@@ -279,6 +316,7 @@ async function createMedia(file, id = uid('m'), opts = {}) {
     if (!m.thumb) m.thumb = makeThumb(img, m.w, m.h);
   }
   state.media.set(m.id, m);
+  if (kind === 'video') setTimeout(() => genFrames(m), 600);
   if (kind !== 'image') {
     await audio.decode(m);
     if (kind === 'audio') m.duration = m.buffer ? m.buffer.duration : m.duration;
@@ -988,6 +1026,7 @@ bus.on('change', (e) => {
 });
 bus.on('time', () => { $('tcNow').textContent = fmtTime(state.time); });
 bus.on('fontloaded', () => (dirty = true));
+bus.on('frames', () => timeline.render());
 const setSaveState = (ok) => { const d = $('saveDot'); if (!d) return; d.className = 'save-dot ' + (ok ? 'ok' : 'pend'); d.title = ok ? 'Guardado' : 'Guardando…'; };
 let saveTimer = null, saving = Promise.resolve(), warnedBig = false;
 let appReady = false; // hasta que se recupera el proyecto guardado no se guarda nada (evita pisarlo con uno vacío)

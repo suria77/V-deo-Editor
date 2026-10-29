@@ -7,6 +7,14 @@ import {
 } from './presets.js';
 import { icon } from './icons.js';
 import { SPEC_STYLES } from './spectrum.js';
+import { thumb } from './thumbs.js';
+// tarjeta con miniatura renderizada (se rellena cuando está lista)
+function thumbCard(kind, id, name, onclick, on) {
+  const im = h('span', { class: 'th-img' });
+  const b = h('button', { class: 'card th-card' + (on ? ' on' : ''), onclick }, im, h('small', {}, name));
+  thumb(kind, id, (u) => { if (u) im.style.backgroundImage = `url(${u})`; });
+  return b;
+}
 import { XFADES, nextAdjacent } from './xfade.js';
 import { layerInfo, moveLayer, swapContent } from './layers.js';
 import { propsFor, valueAt, setValue, setKf, removeKf, kfAt, hasKf, kfTimes, anyKfAt, toggleAllKf, anyKf } from './kf.js';
@@ -295,7 +303,7 @@ export class Panels {
       : 'Transforman toda la imagen durante un tramo: glitch, VHS, temblor, flashes…'));
     const grid = (list) => {
       const g = h('div', { class: 'grid' });
-      for (const d of list) g.append(h('button', { class: 'card txt', onclick: () => this.app.addFx(d.id, isP ? 'particles' : 'post') }, d.n));
+      for (const d of list) g.append(thumbCard(isP ? 'particles' : 'post', d.id, d.n, () => this.app.addFx(d.id, isP ? 'particles' : 'post')));
       return g;
     };
     if (isP) {
@@ -447,7 +455,7 @@ export class Panels {
         h('p', { class: 'hint' }, '«Pantalla» quita el negro: perfecto para vídeos de fuego, chispas o luces sobre fondo negro.')));
 
       b.append(sec('filter', 'Filtros', '🎨',
-        chips(Object.entries(FILTERS).map(([id, f]) => ({ id, n: f.n })), c.filter, (v) => { c.filter = v; live(); done(); }),
+        h('div', { class: 'grid th-grid' }, ...Object.entries(FILTERS).map(([id, f]) => thumbCard('filter', id, f.n, () => { c.filter = id; live(); done(); this.render(); }, c.filter === id))),
         S('Intensidad del filtro', c, 'filterAmt', 0, 1, 0.01, pct)));
 
       const adjBox = h('div');

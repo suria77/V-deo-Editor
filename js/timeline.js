@@ -97,6 +97,7 @@ export class Timeline {
         area.append(el);
         this.clipEls.set(c.id, el);
         if (el._wave) requestAnimationFrame(() => this.drawWave(el._wave, c));
+        if (el._strip) requestAnimationFrame(() => this.drawStrip(el._strip, c));
       }
       // botón de transición entre dos clips seguidos
       if (L.lane === 'video' || L.lane === 'overlay') {
@@ -125,14 +126,15 @@ export class Timeline {
     let label = '';
     const el = h('div', { class: cls.join(' '), 'data-id': c.id });
     if (c.type === 'video' || c.type === 'image') {
-      if (m && m.thumb) el.append(h('div', { class: 'cl-bg', style: `background-image:url(${m.thumb})` }));
-      label = (c.type === 'video' ? '🎬 ' : '🖼️ ') + (m ? m.name : 'Medio');
+      if (c.type === 'video' && m && m.frames) { const cv = h('canvas', { class: 'cl-strip' }); el.append(cv); el._strip = cv; }
+      else if (m && m.thumb) el.append(h('div', { class: 'cl-bg', style: `background-image:url(${m.thumb})` }));
+      label = m ? m.name : 'Medio';
       if (c.speed !== 1) label += ` · ${c.speed}×`;
     } else if (c.type === 'audio') {
       const cv = h('canvas');
       el.append(cv);
       el._wave = cv;
-      label = '🎵 ' + (m ? m.name : 'Audio');
+      label = m ? m.name : 'Audio';
     } else if (c.type === 'text') {
       label = 'T  ' + (c.text || '').replace(/\n/g, ' ');
     } else if (c.type === 'fx') {
@@ -174,6 +176,21 @@ export class Timeline {
     for (const [id, el] of this.clipEls) { const c = state.project.clips.find((k) => k.id === id); if (c) this.drawKf(el, c); }
   }
 
+  drawStrip(cv, c) {
+    const m = state.media.get(c.media);
+    if (!m || !m.frames) return;
+    const w = Math.min(4000, Math.max(10, Math.round(c.dur * this.pps)));
+    const hgt = cv.clientHeight || 56;
+    cv.width = w; cv.height = hgt;
+    const g = cv.getContext('2d');
+    const tw = Math.max(20, Math.round((m.w / m.h) * hgt));
+    for (let x = 0; x < w; x += tw) {
+      const t = c.in + ((x + tw / 2) / w) * c.dur * c.speed;
+      const f = m.frames[Math.max(0, Math.min(m.frames.length - 1, Math.floor(t / m.fstep)))];
+      if (f) g.drawImage(f, x, 0, tw, hgt);
+    }
+  }
+
   drawWave(cv, c) {
     const m = state.media.get(c.media);
     if (!m || !m.peaks) return;
@@ -195,6 +212,13 @@ export class Timeline {
     for (const [id, el] of this.clipEls) {
       el.classList.toggle('sel', state.sel.has(id));
       el.classList.toggle('prim', id === state.selection && state.sel.size > 1);
+    }
+    // al seleccionar un clip de otra pista, la línea de tiempo baja o sube hasta mostrarlo
+    const cur = state.selection && this.clipEls.get(state.selection);
+    if (cur && this.scroll && this.scroll.clientHeight) {
+      const sr = this.scroll.getBoundingClientRect(), r = cur.getBoundingClientRect();
+      if (r.bottom > sr.bottom - 4) this.scroll.scrollTop += r.bottom - sr.bottom + 8;
+      else if (r.top < sr.top + 28) this.scroll.scrollTop -= sr.top + 28 - r.top;
     }
   }
 
